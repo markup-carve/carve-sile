@@ -2,7 +2,7 @@
 
 local base = require("inputters.base")
 local bridge = require("carve.bridge")
-local pandocast = require("inputters.pandocast")
+local Renderer = require("carve.renderer")
 
 local inputter = pl.class(base)
 inputter._name = "carve"
@@ -23,9 +23,14 @@ function inputter:parse (doc)
     SU.warn(warnings:gsub("%s+$", ""))
   end
 
-  -- Reuse resilient.sile's mature Pandoc AST-to-SILE renderer. This returns
-  -- the complete document AST, including the default markdown/resilient class.
-  return pandocast(self.options):parse(json)
+  local hasJson, decoder = pcall(require, "json.decode")
+  if not hasJson then hasJson, decoder = pcall(require, "lunajson") end
+  if not hasJson then SU.error("The Carve inputter requires luajson or lunajson") end
+
+  local ast = decoder.decode(json)
+  local tree = Renderer(self.options):render(ast)
+  tree = SU.ast.createCommand("document", { class = "markdown" }, tree)
+  return { tree }
 end
 
 return inputter

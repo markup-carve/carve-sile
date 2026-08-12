@@ -3,17 +3,17 @@ set -eu
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-if ! command -v pandoc-carve >/dev/null 2>&1; then
-  echo "SKIP: pandoc-carve is not installed"
+if ! command -v carve >/dev/null 2>&1; then
+  echo "SKIP: carve is not installed"
   exit 0
 fi
 
-json=$(pandoc-carve "$repo_dir/examples/smoke.crv" -t json)
-printf '%s' "$json" | grep -q '"pandoc-api-version"'
-printf '%s' "$json" | grep -q '"t":"Header"'
+json=$(carve "$repo_dir/examples/smoke.crv" --json)
+printf '%s' "$json" | grep -q '"type": "document"'
+printf '%s' "$json" | grep -q '"type": "heading"'
 
 if ! command -v sile >/dev/null 2>&1; then
-  echo "PASS: Carve to Pandoc JSON (SILE is not installed; PDF check skipped)"
+  echo "PASS: Carve exchange AST (SILE is not installed; PDF check skipped)"
   exit 0
 fi
 

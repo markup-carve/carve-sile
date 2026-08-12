@@ -1,13 +1,12 @@
-FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a AS pandoc-carve
+FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a AS build
 
 RUN git clone \
-      https://github.com/markup-carve/pandoc-carve.git /opt/pandoc-carve \
-    && cd /opt/pandoc-carve \
-    && git checkout 60e219aa84db977f07e7c2d0b360512ae36e46c9 \
+      https://github.com/markup-carve/carve-js.git /opt/carve \
+    && cd /opt/carve \
+    && git checkout 88158743c318d20e6a7d1b2e6c1095d75b4264c1 \
     && git submodule update --init --recursive \
     && npm ci \
     && npm run build \
-    && npm prune --omit=dev \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
     && cd /opt/resilient.sile \
     && git checkout 739d00222d9e983f3580b33081b5c5fb0711de2e \
@@ -39,14 +38,15 @@ RUN git clone \
 
 FROM siletypesetter/sile@sha256:3643ad31e39952fffdbbc8c058e37e9454f3c0a0d7bc51631f72823b4ccf76cf
 
-COPY --from=pandoc-carve /usr/local/bin/node /usr/local/bin/node
-COPY --from=pandoc-carve /opt/pandoc-carve /opt/pandoc-carve
-COPY --from=pandoc-carve /opt/resilient.sile /opt/resilient.sile
-COPY --from=pandoc-carve /opt/grail /opt/grail
-COPY --from=pandoc-carve /opt/rough /opt/rough
-COPY --from=pandoc-carve /opt/addons /opt/addons
-RUN chmod +x /opt/pandoc-carve/dist/cli.js \
-    && ln -s /opt/pandoc-carve/dist/cli.js /usr/local/bin/pandoc-carve \
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
+COPY --from=build /opt/carve /opt/carve
+COPY --from=build /opt/resilient.sile /opt/resilient.sile
+COPY --from=build /opt/grail /opt/grail
+COPY --from=build /opt/rough /opt/rough
+COPY --from=build /opt/addons /opt/addons
+COPY docker/carve-wrapper.sh /usr/local/bin/carve
+RUN chmod +x /opt/carve/dist/cli.js \
+    && chmod +x /usr/local/bin/carve \
     && luarocks install lunajson \
     && luarocks install mimetypes \
     && luarocks install sha1 \

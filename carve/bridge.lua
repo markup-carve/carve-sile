@@ -1,4 +1,4 @@
---- Convert Carve source to Pandoc JSON through the pandoc-carve CLI.
+--- Parse Carve source into its normative exchange JSON AST.
 
 local bridge = {}
 
@@ -21,14 +21,14 @@ end
 
 function bridge.convert (source, options)
   options = options or {}
-  local converter = options.converter or "pandoc-carve"
+  local converter = options.converter or "carve"
   local sourceName = os.tmpname()
   local ok, err = writeFile(sourceName, source)
   if not ok then
     return nil, "cannot create temporary Carve input: " .. tostring(err)
   end
 
-  local command = shellQuote(converter) .. " " .. shellQuote(sourceName) .. " -t json"
+  local command = shellQuote(converter) .. " " .. shellQuote(sourceName) .. " --json"
   local success, code, stdout, stderr = pl.utils.executeex(command)
   os.remove(sourceName)
 
@@ -37,10 +37,10 @@ function bridge.convert (source, options)
     if detail == "" then
       detail = "exit status " .. tostring(code)
     end
-    return nil, "pandoc-carve failed: " .. detail
+    return nil, "Carve parser failed: " .. detail
   end
   if not stdout or stdout:match("^%s*$") then
-    return nil, "pandoc-carve produced no Pandoc JSON"
+    return nil, "Carve parser produced no exchange AST"
   end
   return stdout, nil, stderr
 end
