@@ -62,6 +62,12 @@ inputter has been loaded.
 The test checks conversion whenever `pandoc-carve` is installed and additionally
 checks PDF generation when SILE is available.
 
+For a reproducible end-to-end test using SILE's official container image:
+
+```sh
+./test/container.sh
+```
+
 ## Current scope
 
 This prototype intentionally reuses Resilient's Pandoc renderer. Constructs with

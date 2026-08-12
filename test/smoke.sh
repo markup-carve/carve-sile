@@ -20,6 +20,6 @@ fi
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT INT TERM
 cd "$work_dir"
-sile -u inputters.carve "$repo_dir/examples/smoke.crv"
+sile -o "$work_dir/smoke.pdf" -u inputters.carve "$repo_dir/examples/smoke.crv"
 test -s smoke.pdf
 echo "PASS: examples/smoke.crv -> smoke.pdf"
