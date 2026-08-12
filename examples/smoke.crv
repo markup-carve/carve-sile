@@ -1,0 +1,18 @@
+---
+title: Carve meets SILE
+author: Carve contributors
+---
+
+# Carve meets SILE
+
+This paragraph has /emphasis/, *strong text*, _underlining_, and =highlighting=.
+
+::: note
+This admonition travelled through Carve's Pandoc bridge into Resilient.
+:::
+
+- One item
+- Another item with $x^2 + y^2$
+
+|= Feature |= Status |
+| Carve input | Working |

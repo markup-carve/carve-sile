@@ -1,0 +1,5 @@
+*.pdf
+*.log
+*.toc
+*.aux
+lua_modules/
