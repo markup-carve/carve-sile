@@ -39,17 +39,27 @@ local function flatten (node, out)
 end
 
 local figures = {}
+local tables = {}
 for _, entry in ipairs(toc) do
+  local record = {
+    number = entry.number,
+    text = table.concat(flatten(entry.label, {}), " "),
+  }
   if entry.level == 5 then
-    figures[#figures + 1] = {
-      number = entry.number,
-      text = table.concat(flatten(entry.label, {}), " "),
-    }
+    figures[#figures + 1] = record
+  elseif entry.level == 6 then
+    tables[#tables + 1] = record
   end
 end
 
 check("the example files two list-of-figures entries", #figures == 2,
   "found " .. #figures)
+
+-- A table panel goes to the list of tables rather than the list of figures, so
+-- it needs suppressing on its own account. Without that the example files one
+-- entry here, and the panel takes table number 1.
+check("the table panel files no list-of-tables entry", #tables == 0,
+  "found " .. #tables)
 
 if #figures == 2 then
   check("the composite figure is the first entry",
