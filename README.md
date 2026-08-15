@@ -17,7 +17,8 @@ not required.
 
 - SILE 0.15.13 or later
 - resilient.sile 4.2.0 or later
-- `pandoc-carve` on `PATH`
+- `pandoc-carve` on `PATH`, built from a checkout that maps `figure_group`
+  (pandoc-carve `af285cc` or later, which is what `Dockerfile` pins)
 
 `pandoc-carve` is not yet published in the npm registry. For now, install it
 from its GitHub checkout:
@@ -59,8 +60,11 @@ inputter has been loaded.
 ./test/smoke.sh
 ```
 
-The test checks conversion whenever `pandoc-carve` is installed and additionally
-checks PDF generation when SILE is available.
+The test runs the `carve.figuregroup` unit test whenever a Lua interpreter is
+available, checks conversion whenever `pandoc-carve` is installed, and
+additionally typesets `examples/smoke.crv` and `examples/composite-figure.crv`
+when SILE is available. For the composite example it reads back the
+list-of-figures entries SILE wrote and checks that the group is one of them.
 
 For a reproducible end-to-end test using SILE's official container image:
 
@@ -81,52 +85,64 @@ decided entirely by the two layers underneath it: the Carve engine pandoc-carve
 depends on, and pandoc-carve's mapping to the Pandoc AST. A construct either
 layer does not know about cannot be recovered here.
 
-### Composite figures are not grouped floats yet
+### Composite figures number as one unit
 
 A bare `::: figure` container is one figure of ordered panels under a single
-caption (Carve PART 9 section 4c). This pipeline does not typeset it as one
-float today, and the reason is worth stating precisely, because two separate
-layers have to move first.
+caption (Carve PART 9 section 4c). The group is one numbering unit and only the
+group produces a list-of-figures entry; its panels take neither a number nor an
+entry, and a number placeholder in a panel caption stays literal.
 
-Input:
+Input, `examples/composite-figure.crv` in short:
 
-```
-{#fig-x .columns-2}
+````
+{#fig-mixed .columns-2}
 ::: figure
-{#fig-x-a}
-![one](a.png)
-^ (a) One
+| Kind | N |
+|------|---|
+| a    | 1 |
+^ (a) A table panel
 
-{#fig-x-b}
-![two](b.png)
-^ (b) Two
-:::
-^ Figure #: Group caption
-
-See </#fig-x> and </#fig-x-a>.
+``` js
+const x = 1
 ```
+^ (b) A listing panel
+:::
+^ Figure #: Two panels, one figure
+````
 
-What reaches SILE today, with the published engine:
+pandoc-carve maps that to a Pandoc `Figure` whose direct `Figure` and `Table`
+children are the panels. Resilient's `pandocast` renderer turns each of those
+into its own captioned float, so left alone a two-panel group consumes three
+figure numbers, files three list-of-figures entries, and ends up numbered
+`Figure 3` while the caption Carve resolved still reads `Figure 1:`.
 
-- the container is an ordinary `Div` carrying the `admonition`, `figure` and
-  `columns-2` classes, holding the two panels as separate Pandoc figures;
-- the group caption is a PARAGRAPH whose text is the literal `^ Figure #: Group
-  caption`, caret and placeholder included, because a caption after a container
-  closer is section 4c's rule and the published engine predates it;
-- both cross-references degrade to their bare target text, since nothing
-  numbered the group.
+`carve/figuregroup.lua` closes that gap. It walks the parsed tree, and on every
+captioned figure it marks the direct captioned children `unnumbered` and
+`notoc`, which are classes Resilient's `markdown:internal:captioned-figure` and
+`markdown:internal:captioned-table` commands already read. The group is then
+the only numbered element, its number agrees with the one Carve wrote into the
+caption, and the list of figures has one entry per group.
 
-The order of the gate:
+Only direct children are panels. A captioned figure inside group content, in
+a `::: note` or in the generic div a nested bare `::: figure` degrades to,
+keeps its own number, which is what corpus documents `318-composite-figures-9`
+and `-11` pin. An opener carrying a quoted title or a `[label]` is not this
+production at all: it stays a generic container, and what it holds numbers on
+its own.
 
-1. an `@markup-carve/carve` release containing the `figure_group` node - it is
-   implemented in carve-js but is not in 0.1.3, the newest published version and
-   the one pandoc-carve resolves;
-2. pandoc-carve mapping `figure_group` to a Pandoc figure containing the panel
-   figures, so the group caption and the panel captions arrive as captions
-   rather than as text;
-3. Resilient's `pandocast` renderer placing that as a float, at which point the
-   `columns-N` hint has something to act on.
+#### What is still missing
 
-Nothing in this repository sits between those steps, so there is no adapter-side
-workaround: code here that recognized a grouped figure would be matching a shape
-no layer below it emits.
+The group numbers as one unit, but it is not yet laid out as one.
+
+- Resilient's captioned elements are, in its own words, not floats. There is no
+  float mechanism to place a group into, so a composite figure sits in the text
+  flow where it was written.
+- The `columns-N` layout hint arrives as a class on the group and nothing below
+  acts on it. Two panels stack vertically rather than sitting side by side.
+  Turning that into a real multi-column arrangement needs a renderer, which is
+  the one thing this adapter deliberately does not own.
+- Carve resolves the caption placeholder before the text reaches SILE, and
+  Resilient prepends its own `Figure N.` to every caption. A caption written
+  `^ Figure #: ...` therefore renders its label twice. This is not specific to
+  composite figures; a single captioned image does the same.
+

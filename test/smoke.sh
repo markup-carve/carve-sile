@@ -3,6 +3,20 @@ set -eu
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
+lua_bin=""
+for candidate in lua lua5.4 lua5.3 lua5.1 luajit; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    lua_bin=$candidate
+    break
+  fi
+done
+
+if [ -n "$lua_bin" ]; then
+  (cd "$repo_dir" && "$lua_bin" test/figuregroup.lua)
+else
+  echo "SKIP: no Lua interpreter for the carve.figuregroup unit test"
+fi
+
 if ! command -v pandoc-carve >/dev/null 2>&1; then
   echo "SKIP: pandoc-carve is not installed"
   exit 0
@@ -11,6 +25,15 @@ fi
 json=$(pandoc-carve "$repo_dir/examples/smoke.crv" -t json)
 printf '%s' "$json" | grep -q '"pandoc-api-version"'
 printf '%s' "$json" | grep -q '"t":"Header"'
+
+# The converter has to map a bare `::: figure` opener to a Pandoc Figure whose
+# panels are nested Figures and Tables, and a titled opener to a plain Div.
+# Everything this repository does with composite figures rests on that split,
+# so check it rather than assume the installed converter is recent enough.
+composite=$(pandoc-carve "$repo_dir/examples/composite-figure.crv" -t json)
+printf '%s' "$composite" \
+  | grep -q '{"t":"Figure","c":\[\["fig-mixed",\["columns-2"\],\[\]\]'
+printf '%s' "$composite" | grep -q '"t":"Div","c":\[\["",\["admonition","figure"\]'
 
 if ! command -v sile >/dev/null 2>&1; then
   echo "PASS: Carve to Pandoc JSON (SILE is not installed; PDF check skipped)"
@@ -23,3 +46,14 @@ cd "$work_dir"
 sile -o "$work_dir/smoke.pdf" -u inputters.carve "$repo_dir/examples/smoke.crv"
 test -s smoke.pdf
 echo "PASS: examples/smoke.crv -> smoke.pdf"
+
+cp "$repo_dir/examples/composite-figure.crv" "$work_dir/composite-figure.crv"
+sile -o "$work_dir/composite-figure.pdf" -u inputters.carve \
+  "$work_dir/composite-figure.crv"
+test -s composite-figure.pdf
+if [ -z "$lua_bin" ]; then
+  echo "SKIP: no Lua interpreter to read the list-of-figures entries"
+  exit 0
+fi
+"$lua_bin" "$repo_dir/test/toccheck.lua" "$work_dir/composite-figure.toc"
+echo "PASS: examples/composite-figure.crv -> composite-figure.pdf"

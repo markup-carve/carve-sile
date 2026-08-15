@@ -3,7 +3,7 @@ FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494
 RUN git clone \
       https://github.com/markup-carve/pandoc-carve.git /opt/pandoc-carve \
     && cd /opt/pandoc-carve \
-    && git checkout 60e219aa84db977f07e7c2d0b360512ae36e46c9 \
+    && git checkout af285cc8edae3bcb1fe1abcfdcde221c5bbe3f1b \
     && git submodule update --init --recursive \
     && npm ci \
     && npm run build \

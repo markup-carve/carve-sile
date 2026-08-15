@@ -26,5 +26,6 @@ build = {
   modules = {
     ["sile.inputters.carve"] = "inputters/carve.lua",
     ["sile.carve.bridge"] = "carve/bridge.lua",
+    ["sile.carve.figuregroup"] = "carve/figuregroup.lua",
   },
 }

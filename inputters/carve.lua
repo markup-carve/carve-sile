@@ -2,6 +2,7 @@
 
 local base = require("inputters.base")
 local bridge = require("carve.bridge")
+local figuregroup = require("carve.figuregroup")
 local pandocast = require("inputters.pandocast")
 
 local inputter = pl.class(base)
@@ -25,7 +26,11 @@ function inputter:parse (doc)
 
   -- Reuse resilient.sile's mature Pandoc AST-to-SILE renderer. This returns
   -- the complete document AST, including the default markdown/resilient class.
-  return pandocast(self.options):parse(json)
+  local tree = pandocast(self.options):parse(json)
+
+  -- A Carve composite figure is one numbering unit (PART 9 section 4c), but
+  -- the renderer above numbers each panel separately. Suppress the panels.
+  return figuregroup.mark(tree)
 end
 
 return inputter
