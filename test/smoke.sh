@@ -47,13 +47,16 @@ sile -o "$work_dir/smoke.pdf" -u inputters.carve "$repo_dir/examples/smoke.crv"
 test -s smoke.pdf
 echo "PASS: examples/smoke.crv -> smoke.pdf"
 
-cp "$repo_dir/examples/composite-figure.crv" "$work_dir/composite-figure.crv"
-sile -o "$work_dir/composite-figure.pdf" -u inputters.carve \
-  "$work_dir/composite-figure.crv"
-test -s composite-figure.pdf
-if [ -z "$lua_bin" ]; then
-  echo "SKIP: no Lua interpreter to read the list-of-figures entries"
-  exit 0
-fi
-"$lua_bin" "$repo_dir/test/toccheck.lua" "$work_dir/composite-figure.toc"
-echo "PASS: examples/composite-figure.crv -> composite-figure.pdf"
+for example in composite-figure:panels composite-figure-nested:nested; do
+  name=${example%:*}
+  mode=${example#*:}
+  cp "$repo_dir/examples/$name.crv" "$work_dir/$name.crv"
+  sile -o "$work_dir/$name.pdf" -u inputters.carve "$work_dir/$name.crv"
+  test -s "$work_dir/$name.pdf"
+  if [ -z "$lua_bin" ]; then
+    echo "SKIP: no Lua interpreter to read the list entries of $name"
+    continue
+  fi
+  "$lua_bin" "$repo_dir/test/toccheck.lua" "$mode" "$work_dir/$name.toc"
+  echo "PASS: examples/$name.crv -> $name.pdf"
+done

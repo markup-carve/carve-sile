@@ -1,0 +1,20 @@
+---
+title: Composite figures, nested content
+author: Carve contributors
+---
+
+# Nested content is not a panel
+
+Only the direct `figure` and `table` children of a bare `::: figure` container
+are its panels (Carve PART 9 section 4c). A captioned figure that sits inside
+group content is not a panel and keeps a number of its own.
+
+:::: figure
+::: note
+``` js
+const z = 3
+```
+^ A listing inside group content, still its own figure
+:::
+::::
+^ Figure #: A group whose content is not a panel

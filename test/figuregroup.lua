@@ -73,7 +73,19 @@ local loneGroup = command("markdown:internal:captioned-figure", {}, {
   command("caption", {}),
 })
 
-figuregroup.mark({ group, container, mixedGroup, loneGroup })
+-- Group content that is itself a container holding a captioned figure. That
+-- figure is not a direct child of the group, so it is not a panel: corpus
+-- documents 318-composite-figures-9 and -11 give it a number of its own.
+local nestedFigure = command("markdown:internal:captioned-figure", { class = "" })
+local noteInGroup = command("markdown:internal:div", { class = "admonition note" }, {
+  nestedFigure,
+})
+local nestedGroup = command("markdown:internal:captioned-figure", {}, {
+  noteInGroup,
+  command("caption", {}),
+})
+
+figuregroup.mark({ group, container, mixedGroup, loneGroup, nestedGroup })
 
 check("a table panel is unnumbered", classOf(tablePanel):match("unnumbered") ~= nil)
 check("a table panel is out of the list of figures", classOf(tablePanel):match("notoc") ~= nil)
@@ -83,6 +95,7 @@ check("the group keeps its own number", classOf(group) == "columns-2")
 check("the group keeps its layout hint", classOf(group):match("columns%-2") ~= nil)
 
 check("a figure in a titled container still numbers", classOf(containedFigure) == "")
+check("a figure inside group content is not a panel", classOf(nestedFigure) == "")
 
 check("non-panel group content is untouched", classOf(prose) == "")
 check("a panel keeps the classes it had", classOf(keptPanel) == "custom unnumbered notoc")
