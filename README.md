@@ -62,9 +62,10 @@ inputter has been loaded.
 
 The test runs the `carve.figuregroup` unit test whenever a Lua interpreter is
 available, checks conversion whenever `pandoc-carve` is installed, and
-additionally typesets `examples/smoke.crv` and `examples/composite-figure.crv`
-when SILE is available. For the composite example it reads back the
-list-of-figures entries SILE wrote and checks that the group is one of them.
+additionally typesets `examples/smoke.crv`, `examples/composite-figure.crv` and
+`examples/composite-figure-nested.crv` when SILE is available. For the two
+composite examples it reads back the list entries SILE wrote and checks that
+the group is one unit and that group content which is not a panel is not.
 
 For a reproducible end-to-end test using SILE's official container image:
 
@@ -145,4 +146,11 @@ The group numbers as one unit, but it is not yet laid out as one.
   Resilient prepends its own `Figure N.` to every caption. A caption written
   `^ Figure #: ...` therefore renders its label twice. This is not specific to
   composite figures; a single captioned image does the same.
+- The two counters only agree in a document where every captioned figure
+  carries a placeholder. Resilient numbers every captioned figure it typesets;
+  Carve numbers only the captions that carry one. A caption written without a
+  placeholder still consumes a Resilient number, and everything after it is
+  numbered one higher than Carve thinks. `examples/composite-figure-nested.crv`
+  is deliberately such a document, which is why its check asserts entries
+  rather than numbers.
 
