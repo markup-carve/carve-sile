@@ -75,3 +75,58 @@ a native Pandoc representation retain their structure. Carve-specific constructs
 follow pandoc-carve's documented, warning-producing degradation rules. A future
 direct Carve-AST renderer can replace `carve/bridge.lua` without changing the
 `.crv` inputter interface.
+
+Because the adapter owns no renderer, what a construct becomes on the page is
+decided entirely by the two layers underneath it: the Carve engine pandoc-carve
+depends on, and pandoc-carve's mapping to the Pandoc AST. A construct either
+layer does not know about cannot be recovered here.
+
+### Composite figures are not grouped floats yet
+
+A bare `::: figure` container is one figure of ordered panels under a single
+caption (Carve PART 9 section 4c). This pipeline does not typeset it as one
+float today, and the reason is worth stating precisely, because two separate
+layers have to move first.
+
+Input:
+
+```
+{#fig-x .columns-2}
+::: figure
+{#fig-x-a}
+![one](a.png)
+^ (a) One
+
+{#fig-x-b}
+![two](b.png)
+^ (b) Two
+:::
+^ Figure #: Group caption
+
+See </#fig-x> and </#fig-x-a>.
+```
+
+What reaches SILE today, with the published engine:
+
+- the container is an ordinary `Div` carrying the `admonition`, `figure` and
+  `columns-2` classes, holding the two panels as separate Pandoc figures;
+- the group caption is a PARAGRAPH whose text is the literal `^ Figure #: Group
+  caption`, caret and placeholder included, because a caption after a container
+  closer is section 4c's rule and the published engine predates it;
+- both cross-references degrade to their bare target text, since nothing
+  numbered the group.
+
+The order of the gate:
+
+1. an `@markup-carve/carve` release containing the `figure_group` node - it is
+   implemented in carve-js but is not in 0.1.3, the newest published version and
+   the one pandoc-carve resolves;
+2. pandoc-carve mapping `figure_group` to a Pandoc figure containing the panel
+   figures, so the group caption and the panel captions arrive as captions
+   rather than as text;
+3. Resilient's `pandocast` renderer placing that as a float, at which point the
+   `columns-N` hint has something to act on.
+
+Nothing in this repository sits between those steps, so there is no adapter-side
+workaround: code here that recognized a grouped figure would be matching a shape
+no layer below it emits.
