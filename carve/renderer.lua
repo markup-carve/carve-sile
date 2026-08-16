@@ -163,7 +163,7 @@ function Renderer:list_item (node)
   return createCommand("item", { bullet = bullet }, self:children(node), pos(node))
 end
 
-function Renderer:table (node)
+function Renderer:table (node, extraClass)
   local rows = node.rows or {}
   local columns = rows[1] and #(rows[1].cells or {}) or 1
   local widths = {}
@@ -178,7 +178,7 @@ function Renderer:table (node)
   if node.caption and #node.caption > 0 then
     wrapped[#wrapped + 1] = createCommand("caption", {}, self:children(node, "caption"), pos(node))
   end
-  return createStructuredCommand("markdown:internal:captioned-table", attrs(node), wrapped, pos(node))
+  return createStructuredCommand("markdown:internal:captioned-table", attrs(node, extraClass), wrapped, pos(node))
 end
 
 function Renderer:table_row (node)
@@ -269,9 +269,54 @@ function Renderer:definition_list (node) return createCommand("markdown:internal
 function Renderer:definition_term (node) return createCommand("term", attrs(node), self:children(node), pos(node)) end
 function Renderer:definition_description (node) return createCommand("definition", attrs(node), self:children(node), pos(node)) end
 
-function Renderer:figure (node)
+function Renderer:figure (node, extraClass)
   local target = self:node(node.target)
   local content = { target, createCommand("caption", {}, self:children(node, "caption"), pos(node)) }
+  return createStructuredCommand("markdown:internal:captioned-figure", attrs(node, extraClass), content, pos(node))
+end
+
+-- A composite figure (PART 9 section 4c): one figure of ordered panels under
+-- a single caption. The panels are the `figure` and `table` children, derived
+-- by type exactly as the exchange schema defines them; every other child is
+-- stray group content preserved in place between the panels.
+--
+-- The group is ONE numbering unit. Resilient numbers every captioned figure
+-- and table it typesets and files each into the list of figures or tables, so
+-- left alone a two-panel group would consume three numbers and three list
+-- entries. The panels therefore carry `unnumbered` and `notoc`, the two
+-- classes `markdown:internal:captioned-figure` and `-table` already read: the
+-- group takes the only number, the list of figures gains one entry per group,
+-- and each panel still keeps its own caption. A figure nested DEEPER than a
+-- direct child - inside a note, a div, or stray paragraph content - is not a
+-- panel and keeps its own number, which is also the engine's rule.
+--
+-- Resilient's captioned elements are not floats (its book class says so of
+-- itself), and no layer below acts on a `columns-N` class, so the group
+-- typesets as the contract's degradation floor: a vertical stack of panels
+-- with their captions in source order, group caption last. The class stays on
+-- the emitted options untouched - a hint decides arrangement, never content,
+-- and the day Resilient grows a float or column mechanism it is still there.
+local PANEL_CLASS = "unnumbered notoc"
+
+function Renderer:figure_group (node)
+  local content = {}
+  for _, child in ipairs(node.children or {}) do
+    local rendered
+    if child.type == "figure" then
+      rendered = self:figure(child, PANEL_CLASS)
+    elseif child.type == "table" then
+      rendered = self:table(child, PANEL_CLASS)
+    else
+      rendered = self:node(child)
+    end
+    if rendered ~= nil then content[#content + 1] = rendered end
+  end
+  -- Absent means uncaptioned, not empty: without a caption child, Resilient's
+  -- captioned-figure numbers nothing and files nothing, which matches the
+  -- engine - a group with no caption draws no number for itself or its panels.
+  if node.caption then
+    content[#content + 1] = createCommand("caption", {}, self:children(node, "caption"), pos(node))
+  end
   return createStructuredCommand("markdown:internal:captioned-figure", attrs(node), content, pos(node))
 end
 

@@ -1,0 +1,19 @@
+# Composite figures
+
+A composite figure typesets as one numbered unit: the panels keep their own
+captions, the group caption closes the figure, and only the group takes a
+list-of-figures entry.
+
+{#fig-mixed .columns-2}
+::: figure
+| Kind | N |
+|------|---|
+| a    | 1 |
+^ (a) A table panel
+
+``` js
+const x = 1
+```
+^ (b) A listing panel
+:::
+^ Figure #: Two panels, one figure
