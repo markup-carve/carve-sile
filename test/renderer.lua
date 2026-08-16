@@ -108,6 +108,13 @@ local BROAD = table.concat({
   "- One item",
   "- Another item",
   "",
+  "{#bfig}",
+  "::: figure",
+  "![p](p.png)",
+  "^ (a) Panel",
+  ":::",
+  "^ Figure #: Broad group",
+  "",
 }, "\n")
 
 local broad = render(BROAD)
@@ -213,6 +220,153 @@ do
     "a heading renders as a header command at its own level",
     tree.command == "markdown:internal:header" and tree.options.level == 1,
     "got command " .. tostring(tree.command) .. " level " .. tostring(tree.options and tree.options.level)
+  )
+end
+
+--- Does a command node carry `name` in its space-joined class option?
+local function hasClass (node, name)
+  local class = node.options and node.options.class
+  if type(class) ~= "string" then return false end
+  for word in class:gmatch("%S+") do
+    if word == name then return true end
+  end
+  return false
+end
+
+local GROUP = table.concat({
+  "{#fig-x .columns-2}",
+  "::: figure",
+  "{#fig-x-a}",
+  "![one](a.png)",
+  "^ (a) One",
+  "",
+  "| Kind | N |",
+  "|------|---|",
+  "| a    | 1 |",
+  "^ (b) A table panel",
+  "",
+  "Stray text between the panels.",
+  ":::",
+  "^ Figure #: Group caption",
+  "",
+}, "\n")
+
+-- 7. A composite figure (PART 9 section 4c) is ONE numbering unit. Resilient
+-- numbers every captioned figure and table it typesets, so unmarked panels
+-- would take a number and a list entry each: a two-panel group would consume
+-- three figure-sequence draws and file three list entries. The panels must
+-- carry `unnumbered` and `notoc` - the classes Resilient's captioned commands
+-- read - while the group itself carries neither.
+do
+  local tree = render(GROUP)
+  check(
+    "a figure group renders as one captioned figure carrying its attributes",
+    tree.command == "markdown:internal:captioned-figure"
+      and tree.options and tree.options.id == "fig-x" and hasClass(tree, "columns-2"),
+    "got command " .. tostring(tree.command) .. " id " .. tostring(tree.options and tree.options.id)
+  )
+  check(
+    "the group is the numbered element and the list entry",
+    not hasClass(tree, "unnumbered") and not hasClass(tree, "notoc"),
+    "group class: " .. tostring(tree.options and tree.options.class)
+  )
+
+  local figurePanel, tablePanel, stray, groupCaption
+  for i = 1, #tree do
+    local child = tree[i]
+    if child.command == "markdown:internal:captioned-figure" then figurePanel = child end
+    if child.command == "markdown:internal:captioned-table" then tablePanel = child end
+    if child.command == "markdown:internal:paragraph" then stray = child end
+    if child.command == "caption" then groupCaption = child end
+  end
+  check(
+    "a figure panel keeps its caption but takes neither number nor list entry",
+    figurePanel ~= nil and hasClass(figurePanel, "unnumbered") and hasClass(figurePanel, "notoc")
+      and flatten(firstCommand(figurePanel, "caption")) == "(a) One",
+    figurePanel and ("class " .. tostring(figurePanel.options.class) .. ", caption "
+      .. string.format("%q", flatten(firstCommand(figurePanel, "caption")))) or "no figure panel"
+  )
+  check(
+    "a table panel is marked the same way through the captioned-table path",
+    tablePanel ~= nil and hasClass(tablePanel, "unnumbered") and hasClass(tablePanel, "notoc"),
+    tablePanel and ("class " .. tostring(tablePanel.options.class)) or "no table panel"
+  )
+  check(
+    "stray group content is preserved in place, not suppressed by the hint",
+    stray ~= nil and flatten(stray) == "Stray text between the panels.",
+    stray and string.format("%q", flatten(stray)) or "no stray paragraph"
+  )
+  check(
+    "the group caption sits last, with the engine's number resolved",
+    groupCaption ~= nil and tree[#tree] == groupCaption
+      and flatten(groupCaption) == "Figure 1: Group caption",
+    groupCaption and string.format("%q", flatten(groupCaption)) or "no group caption"
+  )
+end
+
+-- 8. Absent means uncaptioned: a group without the `^ ` line after the closing
+-- fence must not grow an empty caption command, because Resilient's
+-- captioned-figure would number it and file a blank list entry.
+do
+  local tree = render(table.concat({
+    "::: figure",
+    "![one](a.png)",
+    "^ (a) One",
+    "",
+    "![two](b.png)",
+    "^ (b) Two",
+    ":::",
+    "",
+  }, "\n"))
+  local direct = false
+  for i = 1, #tree do
+    if tree[i].command == "caption" then direct = true end
+  end
+  check("an uncaptioned group emits no group caption command", not direct)
+end
+
+-- 9. Only DIRECT children are panels, which is the engine's rule too: a
+-- captioned figure nested inside stray group content keeps its own number.
+-- Marking every captioned DESCENDANT instead would leave test 7 green, so
+-- this is the check that pins the depth.
+do
+  local tree = render(table.concat({
+    "::: figure",
+    "![one](a.png)",
+    "^ (a) One",
+    "",
+    "::: note",
+    "![deep](d.png)",
+    "^ Figure #: Not a panel",
+    ":::",
+    ":::",
+    "^ Figure #: Group caption",
+    "",
+  }, "\n"))
+  local nested
+  for _, node in ipairs(tables(tree)) do
+    if node.command == "markdown:internal:captioned-figure"
+      and flatten(firstCommand(node, "caption")):find("Not a panel", 1, true) then
+      nested = node
+    end
+  end
+  check(
+    "a captioned figure nested below a direct child keeps its own number",
+    nested ~= nil and not hasClass(nested, "unnumbered") and not hasClass(nested, "notoc"),
+    nested and ("class " .. tostring(nested.options.class)) or "nested figure not found"
+  )
+end
+
+-- 10. Control. The panel marking must come from the group, not from the figure
+-- or table handlers: a captioned figure outside any group keeps its number,
+-- and if this ever fails the classes were fixed at the wrong layer.
+do
+  local tree = render("![one](a.png)\n^ Figure #: Alone\n")
+  check(
+    "a standalone captioned figure is still a numbered element",
+    tree.command == "markdown:internal:captioned-figure"
+      and not hasClass(tree, "unnumbered") and not hasClass(tree, "notoc"),
+    "got command " .. tostring(tree.command) .. " class " .. tostring(tree.options and tree.options.class)
   )
 end
 
