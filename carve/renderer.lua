@@ -33,6 +33,33 @@ local function asList (value)
   return value
 end
 
+-- The parser carries a no-break space as U+E000, a private-use codepoint: an
+-- escaped `\ `, and the indentation a line block preserves, both arrive as
+-- that character rather than as U+00A0, which is published as itself. The
+-- exchange format requires the resolution rather than suggesting it - a
+-- consumer "MUST map U+E000 to its target's no-break space, or to an ordinary
+-- space where the target has none, and MUST NOT emit it" (the AST schema, on
+-- a text node's value).
+--
+-- SILE has a no-break space, so the first branch applies: it honors U+00A0,
+-- hyphenating a word rather than breaking the line at one. Left alone the
+-- sentinel is not dropped either - SILE draws the font's .notdef box for it,
+-- so `Escaped\ space` typesets as "Escaped[]space". That puts this target
+-- alongside the engine's HTML and Markdown output rather than alongside its
+-- terminal targets, which flatten the sentinel to an ordinary space because a
+-- terminal has nowhere to put the no-break property.
+local NBSP_SENTINEL = "\238\128\128" -- U+E000
+local NBSP = "\194\160" -- U+00A0
+
+--- Resolve the sentinel in a string the renderer is about to typeset.
+-- Applied where the engine's own HTML target escapes the value - text, code
+-- spans, code blocks, literal inlines - and deliberately not to raw blocks and
+-- raw inlines, which that target passes through byte for byte.
+local function resolveNbsp (value)
+  if type(value) ~= "string" then return value end
+  return (value:gsub(NBSP_SENTINEL, NBSP))
+end
+
 function Renderer:_init (options)
   self.shiftHeadings = SU.cast("integer", options.shift_headings or 0)
   self.footnotes = {}
@@ -71,7 +98,7 @@ function Renderer:node (node)
 end
 
 function Renderer:document (node) return self:children(node) end
-function Renderer:text (node) return node.value end
+function Renderer:text (node) return resolveNbsp(node.value) end
 function Renderer:escaped_text (node) return node.value end
 function Renderer:soft_break (_) return " " end
 function Renderer:hard_break (_) return createCommand("markdown:internal:hardbreak") end
@@ -118,7 +145,7 @@ end
 
 function Renderer:code_block (node)
   local options = attrs(node, node.lang)
-  return createCommand("markdown:internal:codeblock", options, node.content, pos(node))
+  return createCommand("markdown:internal:codeblock", options, resolveNbsp(node.content), pos(node))
 end
 
 function Renderer:raw_block (node)
@@ -193,8 +220,8 @@ end
 
 function Renderer:subscript (node) return createCommand("textsubscript", {}, self:children(node), pos(node)) end
 function Renderer:superscript (node) return createCommand("textsuperscript", {}, self:children(node), pos(node)) end
-function Renderer:code (node) return createCommand("code", attrs(node), node.value, pos(node)) end
-function Renderer:literal_inline (node) return createCommand("code", attrs(node), node.content, pos(node)) end
+function Renderer:code (node) return createCommand("code", attrs(node), resolveNbsp(node.value), pos(node)) end
+function Renderer:literal_inline (node) return createCommand("code", attrs(node), resolveNbsp(node.content), pos(node)) end
 
 function Renderer:link (node)
   local options = attrs(node)
@@ -260,6 +287,10 @@ function Renderer:mention (node) return createCommand("markdown:internal:span", 
 function Renderer:tag (node) return createCommand("markdown:internal:span", attrs(node, "tag"), "#" .. node.name, pos(node)) end
 function Renderer:symbol (node) return createCommand("markdown:internal:symbol", { _symbol_ = node.name }, nil, pos(node)) end
 function Renderer:abbreviation (node) return createCommand("markdown:internal:span", { title = node.expansion }, node.abbr, pos(node)) end
-function Renderer:inline_extension (node) return createCommand("markdown:internal:span", attrs(node, "extension " .. node.name), node.content, pos(node)) end
+-- An inline extension carries its content as an array of nodes under
+-- `content`, not as a string, so it needs converting like any other children
+-- list. Handed to createCommand as-is, the records reach SILE.process, which
+-- has nothing to do with them and drops the content on the floor.
+function Renderer:inline_extension (node) return createCommand("markdown:internal:span", attrs(node, "extension " .. node.name), self:children(node, "content"), pos(node)) end
 
 return Renderer
