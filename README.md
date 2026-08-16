@@ -50,13 +50,17 @@ inputter has been loaded.
 ## Test
 
 ```sh
+./test/renderer.sh
 ./test/smoke.sh
 ```
 
-The test checks the exchange AST whenever `carve` is installed and additionally
-checks PDF generation when SILE is available.
+`test/renderer.sh` asserts on what the renderer puts into the SILE AST. It runs
+its assertions inside SILE, so `SU.ast` is the real one, and it parses every
+fixture with the `carve` CLI, so the AST under assertion is the engine's own
+output. `test/smoke.sh` checks the exchange AST whenever `carve` is installed
+and additionally checks PDF generation when SILE is available.
 
-For a reproducible end-to-end test using SILE's official container image:
+For a reproducible end-to-end run of both using SILE's official container image:
 
 ```sh
 ./test/container.sh

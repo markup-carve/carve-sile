@@ -60,4 +60,4 @@ WORKDIR /work
 COPY . /work
 RUN luarocks make carve-sile-dev-1.rockspec
 
-CMD ["./test/smoke.sh"]
+CMD ["/bin/sh", "-c", "./test/renderer.sh && ./test/smoke.sh"]
