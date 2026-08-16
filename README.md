@@ -41,7 +41,7 @@ sile -u inputters.carve examples/smoke.crv
 This creates `smoke.pdf`. To use a non-default converter executable:
 
 ```sh
-sile -u 'inputters.carve[converter=/path/to/pandoc-carve]' book.crv
+sile -u 'inputters.carve[converter=/path/to/carve]' book.crv
 ```
 
 Carve files may also be included from a Resilient master document after the
@@ -53,7 +53,7 @@ inputter has been loaded.
 ./test/smoke.sh
 ```
 
-The test checks conversion whenever `pandoc-carve` is installed and additionally
+The test checks the exchange AST whenever `carve` is installed and additionally
 checks PDF generation when SILE is available.
 
 For a reproducible end-to-end test using SILE's official container image:

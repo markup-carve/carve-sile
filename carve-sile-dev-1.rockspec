@@ -9,8 +9,8 @@ source = {
 description = {
   summary = "Carve input support for the SILE typesetter and resilient.sile",
   detailed = [[
-    A SILE inputter for .crv documents. It converts Carve to Pandoc JSON with
-    pandoc-carve, then delegates to resilient.sile's Pandoc AST renderer.
+    A SILE inputter for .crv documents. It reads Carve's normative exchange AST
+    from the carve CLI and renders it to resilient.sile's SILE commands.
   ]],
   homepage = "https://github.com/markup-carve/carve-sile",
   license = "MIT",
