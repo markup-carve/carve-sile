@@ -3,10 +3,11 @@ FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494
 RUN git clone \
       https://github.com/markup-carve/carve-js.git /opt/carve \
     && cd /opt/carve \
-    && git checkout bde69f85bd449f53bed000f5c2f0557d2596b45c \
+    && git checkout e5c0defd883361daa977d6fb2cec9ec2e1d578fe \
     && git submodule update --init --recursive \
     && npm ci \
     && npm run build \
+    && npm install --prefix /opt/carve-0.1.6 --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.6 \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
     && cd /opt/resilient.sile \
     && git checkout 739d00222d9e983f3580b33081b5c5fb0711de2e \
@@ -40,13 +41,15 @@ FROM siletypesetter/sile@sha256:3643ad31e39952fffdbbc8c058e37e9454f3c0a0d7bc5163
 
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /opt/carve /opt/carve
+COPY --from=build /opt/carve-0.1.6 /opt/carve-0.1.6
 COPY --from=build /opt/resilient.sile /opt/resilient.sile
 COPY --from=build /opt/grail /opt/grail
 COPY --from=build /opt/rough /opt/rough
 COPY --from=build /opt/addons /opt/addons
 COPY docker/carve-wrapper.sh /usr/local/bin/carve
+COPY docker/carve-0.1.6-wrapper.sh /usr/local/bin/carve-0.1.6
 RUN chmod +x /opt/carve/dist/cli.js \
-    && chmod +x /usr/local/bin/carve \
+    && chmod +x /usr/local/bin/carve /usr/local/bin/carve-0.1.6 \
     && luarocks install lunajson \
     && luarocks install mimetypes \
     && luarocks install sha1 \

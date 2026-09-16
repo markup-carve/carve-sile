@@ -53,6 +53,27 @@ sile -u 'inputters.carve[converter=/path/to/carve]' book.crv
 Carve files may also be included from a Resilient master document after the
 inputter has been loaded.
 
+## Includes
+
+`{{ path }}` directives in a `.crv` file expand before typesetting. A path
+resolves against the file that writes it, and nothing outside the containment
+root is read. By default the root is the directory of the file SILE is
+processing; `include_root` sets another one, and it must be absolute:
+
+```sh
+sile -u 'inputters.carve[include_root=/srv/book]' /srv/book/chapters/one.crv
+```
+
+`includes=false` leaves directives literal. Source that SILE does not hand over
+as an unchanged file has no directory, so its directives stay literal unless
+`include_root` is set.
+
+A directive that does not resolve stays in the output, and SILE prints a warning
+naming it with the file path relative to the root. Includes need a `carve` CLI with
+include support, which no published `@markup-carve/carve` release has yet. With
+an older CLI the directives stay literal and a warning says so, and setting
+`include_root` is an error.
+
 ## Test
 
 ```sh

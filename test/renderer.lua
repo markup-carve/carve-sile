@@ -370,5 +370,108 @@ do
   )
 end
 
+-- 11. Includes. Each target below WOULD resolve if the guard under test were
+-- missing, so a directive left standing is evidence rather than a default.
+do
+  local function write (filename, content)
+    local handle = assert(io.open(filename, "wb"))
+    handle:write(content)
+    handle:close()
+  end
+  local function has (text, needle) return text:find(needle, 1, true) ~= nil end
+
+  local base = os.tmpname()
+  os.remove(base)
+  local book = base .. "/book"
+  pl.dir.makepath(book .. "/parts/nested")
+  write(base .. "/outside.crv", "OUTSIDE-ROOT\n")
+  write(book .. "/parts/one.crv", "One.\n\n{{ nested/two.crv }}\n\n{{ nested/gone.crv }}\n")
+  write(book .. "/parts/nested/two.crv", "Two.\n")
+  local mainSource = "Before.\n\n{{ parts/one.crv }}\n"
+  write(book .. "/main.crv", mainSource)
+  local escapeSource = "{{ ../outside.crv }}\n"
+  write(book .. "/escape.crv", escapeSource)
+
+  local function convert (source, options)
+    local json, err, warnings = bridge.convert(source, options)
+    local text = json and flatten(Renderer({}):render(decoder.decode(json))) or ""
+    return text, err or "", warnings or ""
+  end
+
+  local text, err, warnings = convert(mainSource, { source_path = book .. "/main.crv" })
+  check("a named file expands nested includes against their parent", has(text, "Two."), err)
+  check("an include that does not resolve reports itself", has(warnings, "include-unresolved"), warnings)
+  check("include warnings name no host path", not has(warnings, base), warnings)
+  check("include warnings name the file below the root", has("\n" .. warnings, "\nparts/one.crv:"), warnings)
+
+  text, err = convert(escapeSource, { source_path = book .. "/escape.crv" })
+  check("a directive cannot leave the file's directory", not has(text, "OUTSIDE-ROOT"), err)
+
+  text, err = convert(escapeSource, { source_path = book .. "/escape.crv", include_root = base })
+  check("include_root widens containment", has(text, "OUTSIDE-ROOT"), err)
+
+  text, err = convert("text\n", { include_root = "book", converter = "/nonexistent/carve" })
+  check("a relative include_root is refused before the converter runs", has(err, "must be an absolute path"), err)
+
+  text, err = convert("text\n", { include_root = "C:\\book", converter = "/nonexistent/carve" })
+  check("a drive-letter include_root is relative on POSIX", has(err, "must be an absolute path"), err)
+
+  -- A temporary file would give the source the temporary directory as its root.
+  local stray = os.tmpname()
+  os.remove(stray)
+  write(stray .. ".crv", "STRAY-TEMP\n")
+  text, err = convert("{{ " .. pl.path.basename(stray) .. ".crv }}\n", {})
+  check("source without a file does not resolve against the temporary directory", not has(text, "STRAY-TEMP"), err)
+  os.remove(stray .. ".crv")
+
+  text, err = convert("{{ parts/one.crv }}\n", { include_root = book })
+  check("source without a file resolves against include_root", has(text, "One."), err)
+
+  text, err = convert(mainSource, { source_path = book .. "/main.crv", includes = false })
+  check("includes = false leaves a named file's directives literal", not has(text, "One."), err)
+
+  local old = "carve-0.1.6"
+  if pl.utils.executeex("command -v " .. old) then
+    check("the probe finds include support in the current CLI", bridge.supportsIncludes("carve"))
+    check("the probe finds none in " .. old, not bridge.supportsIncludes(old))
+
+    text, err, warnings = convert(mainSource, { converter = old, source_path = book .. "/main.crv" })
+    check("an older CLI still renders a named file with directives", has(text, "{{ parts/one.crv }}"), err)
+    check("an older CLI reports that directives stayed literal", has(warnings, "include directives left literal"), warnings)
+
+    text, err = convert(mainSource, { converter = old, source_path = book .. "/main.crv", include_root = book })
+    check("include_root with an older CLI is an error", has(err, "has no include support"), err)
+
+    text, err = convert(mainSource, { converter = old, source_path = book .. "/main.crv", includes = false })
+    check("an older CLI accepts includes = false", has(text, "Before."), err)
+  else
+    print("skip - " .. old .. " is not installed; older-CLI include checks not run")
+  end
+
+  local Inputter = require("inputters.carve")
+  local function parseAs (file, doc, options)
+    local saved = SILE.currentlyProcessingFile
+    SILE.currentlyProcessingFile = file
+    local ok, result = pcall(function () return Inputter(options or {}):parse(doc) end)
+    SILE.currentlyProcessingFile = saved
+    return ok and flatten(result) or ("ERROR: " .. tostring(result))
+  end
+
+  text = parseAs(book .. "/main.crv", mainSource)
+  check("the inputter gives the bridge the file SILE is processing", has(text, "Two."), text)
+
+  text = parseAs(book .. "/main.crv", "Rewritten.\n\n{{ parts/one.crv }}\n")
+  check("source that differs from its file is not read from the file", not has(text, "One."), text)
+  check("source that differs from its file still renders", has(text, "Rewritten."), text)
+
+  text = parseAs(book .. "/escape.crv", escapeSource, { include_root = base })
+  check("the inputter passes include_root", has(text, "OUTSIDE-ROOT"), text)
+
+  text = parseAs(book .. "/main.crv", mainSource, { includes = "false" })
+  check("the inputter honors includes=false from an option string", not has(text, "One."), text)
+
+  pl.dir.rmtree(base)
+end
+
 print(string.format("\n%d checks, %d failed", run, #failed))
 os.exit(#failed == 0 and 0 or 1)
