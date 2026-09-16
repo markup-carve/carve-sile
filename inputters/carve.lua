@@ -15,6 +15,8 @@ end
 function inputter:parse (doc)
   local json, err, warnings = bridge.convert(doc, {
     converter = self.options.converter,
+    source_path = self.options.source_path,
+    include_root = self.options.include_root,
   })
   if not json then
     SU.error(err)

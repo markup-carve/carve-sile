@@ -43,6 +43,13 @@ local function render (source)
   return Renderer({}):render(decoder.decode(json))
 end
 
+local function writeFixture (filename, source)
+  local handle, err = io.open(filename, "wb")
+  if not handle then error(err) end
+  handle:write(source)
+  handle:close()
+end
+
 --- Every table in a rendered tree, depth first, the root included.
 local function tables (node, acc)
   acc = acc or {}
@@ -368,6 +375,93 @@ do
       and not hasClass(tree, "unnumbered") and not hasClass(tree, "notoc"),
     "got command " .. tostring(tree.command) .. " class " .. tostring(tree.options and tree.options.class)
   )
+end
+
+-- 11. The bridge gives named files an identity for nested relative includes.
+-- Anonymous source stays literal unless its caller opts into filesystem access.
+do
+  local root = os.tmpname()
+  os.remove(root)
+  pl.dir.makepath(root .. "/parts/nested")
+  writeFixture(root .. "/main.crv", "Before.\n\n{{ parts/one.crv }}\n\nAfter.\n")
+  writeFixture(root .. "/parts/one.crv", "One.\n\n{{ nested/two.crv }}\n")
+  writeFixture(root .. "/parts/nested/two.crv", "Two.\n")
+
+  local source = "Before.\n\n{{ parts/one.crv }}\n\nAfter.\n"
+  local json, err = bridge.convert(source, {
+    source_path = root .. "/main.crv",
+    include_root = root,
+  })
+  local tree = json and Renderer({}):render(decoder.decode(json)) or nil
+  check(
+    "named source expands nested includes relative to their parent files",
+    tree ~= nil and flatten(tree):find("Before.", 1, true)
+      and flatten(tree):find("One.", 1, true)
+      and flatten(tree):find("Two.", 1, true)
+      and flatten(tree):find("After.", 1, true)
+      and not flatten(tree):find("{{", 1, true),
+    err
+  )
+
+  json, err = bridge.convert("{{ parts/one.crv }}", { include_root = root })
+  tree = json and Renderer({}):render(decoder.decode(json)) or nil
+  check(
+    "anonymous source expands includes only when given an explicit root",
+    tree ~= nil and flatten(tree):find("One.", 1, true)
+      and flatten(tree):find("Two.", 1, true)
+      and not flatten(tree):find("{{", 1, true),
+    err
+  )
+
+  json, err = bridge.convert("{{ parts/one.crv }}", {})
+  tree = json and Renderer({}):render(decoder.decode(json)) or nil
+  check(
+    "anonymous source leaves include directives literal without an explicit root",
+    tree ~= nil and flatten(tree):find("{{ parts/one.crv }}", 1, true) ~= nil,
+    err
+  )
+
+  local _, relativeErr = bridge.convert("text", { include_root = "relative" })
+  check(
+    "relative include roots are rejected before invoking the converter",
+    relativeErr == "Carve include_root must be absolute",
+    relativeErr
+  )
+
+
+  local _, sourceErr = bridge.convert("text", { source_path = "relative.crv" })
+  check(
+    "relative source paths are rejected before invoking the converter",
+    sourceErr == "Carve source_path must be absolute",
+    sourceErr
+  )
+
+  local _, changedErr = bridge.convert("preprocessed", {
+    source_path = root .. "/main.crv",
+    include_root = root,
+  })
+  check(
+    "a source path cannot silently replace preprocessed SILE input",
+    changedErr == "Carve source_path content differs from the source supplied by SILE",
+    changedErr
+  )
+
+  writeFixture(root .. "/main.crv", "{{ ../outside.crv }}\n")
+  local warnings
+  json, err, warnings = bridge.convert("{{ ../outside.crv }}\n", {
+    source_path = root .. "/main.crv",
+    include_root = root,
+  })
+  tree = json and Renderer({}):render(decoder.decode(json)) or nil
+  check(
+    "root escapes stay literal and return a sanitized warning",
+    tree ~= nil and flatten(tree):find("{{ ../outside.crv }}", 1, true)
+      and warnings ~= nil and warnings:find("include%-unresolved") ~= nil
+      and warnings:find(root, 1, true) == nil,
+    err or warnings
+  )
+
+  pl.dir.rmtree(root)
 end
 
 print(string.format("\n%d checks, %d failed", run, #failed))

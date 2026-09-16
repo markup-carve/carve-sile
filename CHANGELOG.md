@@ -14,6 +14,9 @@ Nothing released yet. The initial capability set:
   `carve --json` produces the normative exchange AST and a native Lua renderer
   maps it to SILE and resilient.sile commands. No Pandoc conversion involved.
 - `converter=` inputter option to point at a non-default `carve` executable.
+- Absolute `source_path=` and `include_root=` options for contained file
+  includes. Anonymous source keeps include directives literal unless a root is
+  supplied explicitly.
 - Carve files can be included from a Resilient master document once the
   inputter is loaded.
 - `carve-sile-dev-1.rockspec` for `luarocks make`, plus a Dockerfile pinning an

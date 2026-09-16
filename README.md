@@ -50,6 +50,23 @@ This creates `smoke.pdf`. To use a non-default converter executable:
 sile -u 'inputters.carve[converter=/path/to/carve]' book.crv
 ```
 
+File includes are disabled for anonymous source by default. Enable contained
+includes by passing an absolute source path, with an optional absolute root:
+
+```sh
+sile -u 'inputters.carve[source_path=/srv/book/main.crv,include_root=/srv/book]' /srv/book/main.crv
+```
+
+The source path gives nested directives their file identity. The root defaults
+to that file's directory; set it to widen or narrow the filesystem boundary.
+The file's bytes must match the source SILE supplies, preventing a configured
+path from silently replacing preprocessed or included input.
+Traversal and symlink escapes remain literal and produce sanitized warnings
+from the Carve CLI. Supplying `include_root` without a source path enables
+includes for stdin-like input and resolves top-level paths from that root.
+Supplied exchange AST input is unchanged because it has already passed the
+processor boundary.
+
 Carve files may also be included from a Resilient master document after the
 inputter has been loaded.
 

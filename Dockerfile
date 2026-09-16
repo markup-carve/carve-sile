@@ -3,7 +3,7 @@ FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494
 RUN git clone \
       https://github.com/markup-carve/carve-js.git /opt/carve \
     && cd /opt/carve \
-    && git checkout bde69f85bd449f53bed000f5c2f0557d2596b45c \
+    && git checkout e6b5b5be24fef6f45e2050d0a27a27eea47c9213 \
     && git submodule update --init --recursive \
     && npm ci \
     && npm run build \
