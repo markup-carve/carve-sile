@@ -393,16 +393,28 @@ do
   write(book .. "/escape.crv", escapeSource)
 
   local function convert (source, options)
-    local json, err, warnings = bridge.convert(source, options)
+    local json, err, warnings, dependencies = bridge.convert(source, options)
     local text = json and flatten(Renderer({}):render(decoder.decode(json))) or ""
-    return text, err or "", warnings or ""
+    return text, err or "", warnings or "", dependencies or {}
   end
 
-  local text, err, warnings = convert(mainSource, { source_path = book .. "/main.crv" })
+  local text, err, warnings, dependencies = convert(mainSource, { source_path = book .. "/main.crv" })
   check("a named file expands nested includes against their parent", has(text, "Two."), err)
   check("an include that does not resolve reports itself", has(warnings, "include-unresolved"), warnings)
   check("include warnings name no host path", not has(warnings, base), warnings)
   check("include warnings name the file below the root", has("\n" .. warnings, "\nparts/one.crv:"), warnings)
+  local dependencyById = {}
+  for _, dependency in ipairs(dependencies) do dependencyById[dependency.id] = dependency end
+  check(
+    "the bridge returns a resolved nested dependency",
+    dependencyById[book .. "/parts/nested/two.crv"]
+      and dependencyById[book .. "/parts/nested/two.crv"].resolved == true
+  )
+  check(
+    "the bridge returns an attempted missing dependency",
+    dependencyById[book .. "/parts/nested/gone.crv"]
+      and dependencyById[book .. "/parts/nested/gone.crv"].resolved == false
+  )
 
   text, err = convert(escapeSource, { source_path = book .. "/escape.crv" })
   check("a directive cannot leave the file's directory", not has(text, "OUTSIDE-ROOT"), err)
@@ -433,7 +445,9 @@ do
   local old = "carve-0.1.6"
   if pl.utils.executeex("command -v " .. old) then
     check("the probe finds include support in the current CLI", bridge.supportsIncludes("carve"))
+    check("the probe finds include reports in the current CLI", bridge.supportsIncludeReport("carve"))
     check("the probe finds none in " .. old, not bridge.supportsIncludes(old))
+    check("the probe finds no include reports in " .. old, not bridge.supportsIncludeReport(old))
 
     text, err, warnings = convert(mainSource, { converter = old, source_path = book .. "/main.crv" })
     check("an older CLI still renders a named file with directives", has(text, "{{ parts/one.crv }}"), err)
@@ -459,6 +473,15 @@ do
 
   text = parseAs(book .. "/main.crv", mainSource)
   check("the inputter gives the bridge the file SILE is processing", has(text, "Two."), text)
+
+  local savedMakeDeps = SILE.makeDeps
+  local registered = {}
+  SILE.makeDeps = { add = function (_, path) registered[path] = true end }
+  text = parseAs(book .. "/main.crv", mainSource)
+  SILE.makeDeps = savedMakeDeps
+  check("the inputter registers a resolved direct include", registered[book .. "/parts/one.crv"] == true)
+  check("the inputter registers a resolved nested include", registered[book .. "/parts/nested/two.crv"] == true)
+  check("the inputter does not register a missing include", registered[book .. "/parts/nested/gone.crv"] == nil)
 
   text = parseAs(book .. "/main.crv", "Rewritten.\n\n{{ parts/one.crv }}\n")
   check("source that differs from its file is not read from the file", not has(text, "One."), text)
