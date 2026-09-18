@@ -30,6 +30,10 @@ a carve-js build from source at `bde69f85` or later, which is what `Dockerfile`
 pins. On an older engine everything else still works; a bare `::: figure`
 arrives as an admonition and typesets as a plain div.
 
+Current engines preserve inline markup in both halves of editorial
+substitutions. The published 0.1.6 CLI still supplies plain strings, which the
+inputter continues to render for compatibility.
+
 ## Install from this checkout
 
 ```sh
