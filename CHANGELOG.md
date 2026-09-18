@@ -18,5 +18,7 @@ Nothing released yet. The initial capability set:
   inputter is loaded.
 - Resolved Carve include targets are registered with SILE's `--makedeps`
   dependency writer.
+- Substitution old and new halves retain their inline markup, with compatibility
+  for the string-shaped node emitted by the published 0.1.6 CLI.
 - `carve-sile-dev-1.rockspec` for `luarocks make`, plus a Dockerfile pinning an
   engine build new enough to emit `figure_group` (composite figures).

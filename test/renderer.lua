@@ -135,7 +135,47 @@ do
   end
 end
 
--- 2. The same defect, stated as an invariant: nothing in a rendered tree may
+-- 2. Substitution halves are inline arrays, not strings. Both sides must pass
+-- through the renderer so nested markup survives in the SILE tree.
+do
+  local tree = render("{~/old/~>/new/~}\n")
+  local substitution
+  for _, node in ipairs(tables(tree)) do
+    if node.command == "markdown:internal:span"
+      and node.options and node.options.class == "substitution" then
+      substitution = node
+    end
+  end
+  check("a substitution renders its old and new text", substitution and flatten(substitution) == "oldnew")
+  local deleted, inserted
+  for _, node in ipairs(tables(substitution or {})) do
+    if node.command == "markdown:internal:span" and node.options then
+      if node.options.class == "deleted" then deleted = node end
+      if node.options.class == "inserted" then inserted = node end
+    end
+  end
+  check(
+    "a substitution keeps the old half first and marked deleted",
+    deleted and flatten(deleted) == "old"
+  )
+  check(
+    "a substitution keeps the new half second and marked inserted",
+    inserted and flatten(inserted) == "new"
+  )
+  local emphasized = 0
+  for _, node in ipairs(tables(substitution or {})) do
+    if node.command == "em" then emphasized = emphasized + 1 end
+  end
+  check("both substitution halves retain inline markup", emphasized == 2, "got " .. emphasized .. " emphasized halves")
+
+  if pl.utils.executeex("command -v carve-0.1.6") then
+    local json, err = bridge.convert("{~old~>new~}\n", { converter = "carve-0.1.6" })
+    local legacy = json and Renderer({}):render(decoder.decode(json)) or {}
+    check("the published engine's string-shaped substitution still renders", flatten(legacy) == "oldnew", err)
+  end
+end
+
+-- 3. The same defect, stated as an invariant: nothing in a rendered tree may
 -- still be an exchange-AST record. Those carry `type`; SILE commands carry
 -- `command`.
 do
@@ -152,7 +192,7 @@ do
   )
 end
 
--- 3. The parser carries a non-breaking space as U+E000. Left alone it reaches
+-- 4. The parser carries a non-breaking space as U+E000. Left alone it reaches
 -- the typesetter as an unmapped private-use codepoint, and SILE draws the
 -- font's .notdef box for it.
 do
@@ -165,7 +205,7 @@ do
   )
 end
 
--- 4. The same defect as an invariant, over text, a code span, a code block and
+-- 5. The same defect as an invariant, over text, a code span, a code block and
 -- a literal inline - every place the engine's own HTML target resolves the
 -- sentinel.
 do
@@ -184,7 +224,7 @@ do
   )
 end
 
--- 5. An id on a block has to land on a command that reads options.
+-- 6. An id on a block has to land on a command that reads options.
 -- `markdown:internal:paragraph` is declared `function (_, content)` in
 -- resilient.sile: it ignores options outright, so an id routed there is
 -- dropped and the `\label` that a `[text](#id)` link resolves against is never
@@ -212,7 +252,7 @@ do
   )
 end
 
--- 6. Control. Nothing above touches heading rendering; if this one ever passes
+-- 7. Control. Nothing above touches heading rendering; if this one ever passes
 -- while the file is broken on purpose, the suite is not running.
 do
   local tree = render("# A heading\n")
@@ -251,7 +291,7 @@ local GROUP = table.concat({
   "",
 }, "\n")
 
--- 7. A composite figure (PART 9 section 4c) is ONE numbering unit. Resilient
+-- 8. A composite figure (PART 9 section 4c) is ONE numbering unit. Resilient
 -- numbers every captioned figure and table it typesets, so unmarked panels
 -- would take a number and a list entry each: a two-panel group would consume
 -- three figure-sequence draws and file three list entries. The panels must
@@ -304,7 +344,7 @@ do
   )
 end
 
--- 8. Absent means uncaptioned: a group without the `^ ` line after the closing
+-- 9. Absent means uncaptioned: a group without the `^ ` line after the closing
 -- fence must not grow an empty caption command, because Resilient's
 -- captioned-figure would number it and file a blank list entry.
 do
@@ -325,7 +365,7 @@ do
   check("an uncaptioned group emits no group caption command", not direct)
 end
 
--- 9. Only DIRECT children are panels, which is the engine's rule too: a
+-- 10. Only DIRECT children are panels, which is the engine's rule too: a
 -- captioned figure nested inside stray group content keeps its own number.
 -- Marking every captioned DESCENDANT instead would leave test 7 green, so
 -- this is the check that pins the depth.
@@ -357,7 +397,7 @@ do
   )
 end
 
--- 10. Control. The panel marking must come from the group, not from the figure
+-- 11. Control. The panel marking must come from the group, not from the figure
 -- or table handlers: a captioned figure outside any group keeps its number,
 -- and if this ever fails the classes were fixed at the wrong layer.
 do
@@ -370,7 +410,7 @@ do
   )
 end
 
--- 11. Includes. Each target below WOULD resolve if the guard under test were
+-- 12. Includes. Each target below WOULD resolve if the guard under test were
 -- missing, so a directive left standing is evidence rather than a default.
 do
   local function write (filename, content)

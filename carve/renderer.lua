@@ -327,7 +327,15 @@ end
 function Renderer:smart_punctuation (node) return node.glyph or node.value end
 function Renderer:caption_number (node) return tostring(node.n or "#") end
 function Renderer:critic_comment (node) return createCommand("markdown:internal:span", { class = "critic-comment" }, node.text, pos(node)) end
-function Renderer:substitution (node) return createCommand("markdown:internal:span", { class = "substitution", old = node.oldText }, node.newText, pos(node)) end
+function Renderer:substitution (node)
+  local old = node.old and self:children(node, "old") or node.oldText
+  local new = node.new and self:children(node, "new") or node.newText
+  local content = {
+    createCommand("markdown:internal:span", { class = "deleted" }, old, pos(node)),
+    createCommand("markdown:internal:span", { class = "inserted" }, new, pos(node)),
+  }
+  return createCommand("markdown:internal:span", attrs(node, "substitution"), content, pos(node))
+end
 function Renderer:mention (node) return createCommand("markdown:internal:span", attrs(node, "mention"), "@" .. node.user, pos(node)) end
 function Renderer:tag (node) return createCommand("markdown:internal:span", attrs(node, "tag"), "#" .. node.name, pos(node)) end
 function Renderer:symbol (node) return createCommand("markdown:internal:symbol", { _symbol_ = node.name }, nil, pos(node)) end
