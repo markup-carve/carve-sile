@@ -74,6 +74,10 @@ include support, which no published `@markup-carve/carve` release has yet. With
 an older CLI the directives stay literal and a warning says so, and setting
 `include_root` is an error.
 
+When SILE runs with `--makedeps`, resolved include targets are added to its
+dependency file. Missing targets remain warnings because SILE's dependency
+writer accepts only files that already exist.
+
 ## Test
 
 ```sh

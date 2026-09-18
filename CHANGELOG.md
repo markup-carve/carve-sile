@@ -16,5 +16,7 @@ Nothing released yet. The initial capability set:
 - `converter=` inputter option to point at a non-default `carve` executable.
 - Carve files can be included from a Resilient master document once the
   inputter is loaded.
+- Resolved Carve include targets are registered with SILE's `--makedeps`
+  dependency writer.
 - `carve-sile-dev-1.rockspec` for `luarocks make`, plus a Dockerfile pinning an
   engine build new enough to emit `figure_group` (composite figures).

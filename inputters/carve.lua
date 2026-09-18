@@ -27,7 +27,7 @@ end
 
 function inputter:parse (doc)
   local includes = self.options.includes
-  local json, err, warnings = bridge.convert(doc, {
+  local json, err, warnings, dependencies = bridge.convert(doc, {
     converter = self.options.converter,
     source_path = sourceFile(doc),
     include_root = self.options.include_root,
@@ -38,6 +38,13 @@ function inputter:parse (doc)
   end
   if warnings and not warnings:match("^%s*$") then
     SU.warn(warnings:gsub("%s+$", ""))
+  end
+  if SILE.makeDeps then
+    for _, dependency in ipairs(dependencies or {}) do
+      if dependency.resolved and type(dependency.id) == "string" then
+        SILE.makeDeps:add(dependency.id)
+      end
+    end
   end
 
   local hasJson, decoder = pcall(require, "json.decode")

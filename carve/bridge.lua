@@ -29,14 +29,23 @@ end
 
 local supportCache = {}
 
+local function helpText (converter)
+  if supportCache[converter] == nil then
+    local _, _, stdout, stderr = pl.utils.executeex(shellQuote(converter) .. " --help")
+    supportCache[converter] = (stdout or "") .. (stderr or "")
+  end
+  return supportCache[converter]
+end
+
 --- Whether the converter's CLI knows --include-root. Published
 -- @markup-carve/carve 0.1.6 does not, and refuses the flag outright.
 function bridge.supportsIncludes (converter)
-  if supportCache[converter] == nil then
-    local _, _, stdout, stderr = pl.utils.executeex(shellQuote(converter) .. " --help")
-    supportCache[converter] = ((stdout or "") .. (stderr or "")):find("--include-root", 1, true) ~= nil
-  end
-  return supportCache[converter]
+  return helpText(converter):find("--include-root", 1, true) ~= nil
+end
+
+--- Whether the converter can publish include dependency identities.
+function bridge.supportsIncludeReport (converter)
+  return helpText(converter):find("--report-includes", 1, true) ~= nil
 end
 
 --- The directory with symlinks resolved, which is how the CLI names files.
@@ -111,15 +120,47 @@ function bridge.convert (source, options)
   elseif supported and includesOn and root ~= nil then
     command = command .. " --include-root " .. shellQuote(root)
   end
+  local reportName
+  if supported and includesOn and bridge.supportsIncludeReport(converter) then
+    reportName = os.tmpname()
+    command = command .. " --report-includes " .. shellQuote(reportName)
+  end
   if stdinName then
     command = command .. " < " .. shellQuote(stdinName)
   end
 
   local success, code, stdout, stderr = pl.utils.executeex(command)
   if stdinName then os.remove(stdinName) end
+  local dependencies = {}
+  local reportError
+  if reportName then
+    local handle = io.open(reportName, "rb")
+    if handle then
+      local report = handle:read("*a")
+      handle:close()
+      local hasJson, decoder = pcall(require, "json.decode")
+      if not hasJson then hasJson, decoder = pcall(require, "lunajson") end
+      if hasJson then
+        local ok, decoded = pcall(decoder.decode, report)
+        if ok and type(decoded) == "table" and type(decoded.dependencies) == "table" then
+          dependencies = decoded.dependencies
+        else
+          reportError = "Carve parser produced an invalid include dependency report"
+        end
+      else
+        reportError = "The Carve bridge requires luajson or lunajson for include dependency reports"
+      end
+    else
+      reportError = "Carve parser produced no include dependency report"
+    end
+    os.remove(reportName)
+  end
   stderr = relativeToRoot(stderr, root or (sourcePath and pl.path.dirname(sourcePath)))
   if warning then
     stderr = warning .. "\n" .. (stderr or "")
+  end
+  if reportError then
+    stderr = (stderr or "") .. reportError .. "\n"
   end
 
   if not success then
@@ -132,7 +173,7 @@ function bridge.convert (source, options)
   if not stdout or stdout:match("^%s*$") then
     return nil, "Carve parser produced no exchange AST"
   end
-  return stdout, nil, stderr
+  return stdout, nil, stderr, dependencies
 end
 
 return bridge
