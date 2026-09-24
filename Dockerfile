@@ -1,12 +1,10 @@
 FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a AS build
 
-RUN git clone \
-      https://github.com/markup-carve/carve-js.git /opt/carve \
-    && cd /opt/carve \
-    && git checkout 644f35b8094724601efe7c8e5a39933d1bbf873e \
-    && git submodule update --init --recursive \
-    && npm ci \
-    && npm run build \
+# The current lane is the released CLI, so the tests measure what a user
+# installing the package gets. The 0.1.6 lane is a fixture, not a stale pin:
+# it is the newest release without include support, and the probe tests need
+# an engine that refuses --include-root.
+RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.7 \
     && npm install --prefix /opt/carve-0.1.6 --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.6 \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
     && cd /opt/resilient.sile \
@@ -48,8 +46,7 @@ COPY --from=build /opt/rough /opt/rough
 COPY --from=build /opt/addons /opt/addons
 COPY docker/carve-wrapper.sh /usr/local/bin/carve
 COPY docker/carve-0.1.6-wrapper.sh /usr/local/bin/carve-0.1.6
-RUN chmod +x /opt/carve/dist/cli.js \
-    && chmod +x /usr/local/bin/carve /usr/local/bin/carve-0.1.6 \
+RUN chmod +x /usr/local/bin/carve /usr/local/bin/carve-0.1.6 \
     && luarocks install lunajson \
     && luarocks install mimetypes \
     && luarocks install sha1 \
