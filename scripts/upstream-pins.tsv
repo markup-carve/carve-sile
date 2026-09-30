@@ -1,0 +1,32 @@
+# What each source revision the Dockerfile clones is meant to follow, and why.
+#
+# A pin listed here is watched by scripts/check-upstream-pins.sh. A pin the
+# Dockerfile clones but this file does not name is a failure, so adding a source
+# to the image forces a ruling instead of leaving it unwatched.
+#
+# Columns, tab separated: owner/repo, policy, reason.
+#
+# release-tag     the revision has to be the newest semver tag of that repo.
+#                 These are installed with luarocks make, so a tagged release is
+#                 what upstream treats as consumable, and a commit landing on the
+#                 default branch past that tag is not staleness. The check does
+#                 not report it, which is what keeps this from reporting twelve
+#                 pins as behind on every run.
+# default-branch  the revision has to be the tip of the default branch.
+#
+# The reason column says what the pin provides, so a later reader can tell which
+# rendering stops working if the pin is dropped.
+#
+Omikhleia/resilient.sile	default-branch	The adapter's rockspec floor is resilient.sile >= 4.2.0 and upstream has not tagged 4.2.0 yet. The newest tag is v4.1.0, so following main is the only way to reach the 4.2.0 rockspec this image builds.
+Omikhleia/grail	release-tag	Graphics intermediate layer that resilient.sile draws through.
+Omikhleia/rough-lua	release-tag	Sketchy drawing library the ornament and chart addons call into.
+Omikhleia/barcodes.sile	release-tag	Barcode rendering.
+Omikhleia/couyards.sile	release-tag	Pendant ornaments, used between sections.
+Omikhleia/embedders.sile	release-tag	Text to image conversion for embedded diagram languages.
+Omikhleia/highlighter.sile	release-tag	Syntax highlighting for Carve code blocks.
+Omikhleia/labelrefs.sile	release-tag	Cross-referencing, which the renderer maps Carve references onto.
+Omikhleia/piecharts.sile	release-tag	Pie charts.
+Omikhleia/ptable.sile	release-tag	Paragraph boxes and framed tables, which the table renderer builds on.
+Omikhleia/qrcode.sile	release-tag	QR codes.
+Omikhleia/smartquotes.sile	release-tag	Typographic quotation marks.
+Omikhleia/textsubsuper.sile	release-tag	Superscripts and subscripts, which Carve spells braced.
