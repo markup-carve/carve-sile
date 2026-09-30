@@ -11,3 +11,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and typeset smoke document
         run: ./test/container.sh
+
+  engine-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the Dockerfile engine pin against the newest release
+        run: ./scripts/check-engine-pin.sh
