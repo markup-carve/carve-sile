@@ -102,6 +102,14 @@ function Renderer:text (node) return resolveNbsp(node.value) end
 function Renderer:escaped_text (node) return node.value end
 function Renderer:soft_break (_) return " " end
 function Renderer:hard_break (_) return createCommand("markdown:internal:hardbreak") end
+
+-- Its own node since carve 0.1.8; before that an escaped space arrived as the
+-- U+E000 sentinel inside a text node, which resolveNbsp still handles. The
+-- command is resilient's own, so the space honors its fixednbsp setting rather
+-- than being a bare U+00A0 in the text run.
+function Renderer:non_breaking_space (node)
+  return createCommand("markdown:internal:nbsp", attrs(node), nil, pos(node))
+end
 function Renderer:comment (_) return nil end
 function Renderer:frontmatter (_) return nil end
 function Renderer:link_reference_definition (_) return nil end
@@ -141,6 +149,21 @@ function Renderer:admonition (node)
     table.insert(content, 1, createCommand("markdown:internal:paragraph", { class = "admonition-title" }, self:children(node, "title"), pos(node)))
   end
   return createCommand("markdown:internal:div", options, content, pos(node))
+end
+
+-- A generated-content opener (`::: toc`, `::: footnotes`, `::: index` and the
+-- rest). Its own node since carve 0.1.8, where it split off from `admonition`.
+-- Nothing here generates the region: this target has no toc builder to hand it
+-- to, so it degrades the way the engine's own HTML target degrades a container
+-- whose kind it does not draw a callout for, to a div carrying the kind. The
+-- blocks written inside the opener are usually none, and are kept where they
+-- stand rather than dropped.
+function Renderer:directive (node)
+  local content = asList(self:children(node))
+  if node.title and #node.title > 0 then
+    table.insert(content, 1, createCommand("markdown:internal:paragraph", { class = "admonition-title" }, self:children(node, "title"), pos(node)))
+  end
+  return createCommand("markdown:internal:div", attrs(node, node.kind), content, pos(node))
 end
 
 function Renderer:code_block (node)
@@ -253,10 +276,15 @@ function Renderer:math (node)
   return createCommand("markdown:internal:math", { mode = node.display and "display" or "text" }, { node.content }, pos(node))
 end
 
+-- The reference names its definition in `label`, which is the field the
+-- definition has always used. Engines up to 0.1.7 spelled the reference's copy
+-- `id`, so both are read: the rockspec pins no CLI, and one of those is what a
+-- reader may still have installed.
 function Renderer:footnote_ref (node)
-  local note = node.id and self.footnotes[node.id] or nil
-  if not note then SU.error("Failure to find Carve footnote '" .. tostring(node.id) .. "'") end
-  return createCommand("markdown:internal:footnote", { id = node.id }, self:children(note), pos(node))
+  local label = node.label or node.id
+  local note = label and self.footnotes[label] or nil
+  if not note then SU.error("Failure to find Carve footnote '" .. tostring(label) .. "'") end
+  return createCommand("markdown:internal:footnote", { id = label }, self:children(note), pos(node))
 end
 
 function Renderer:inline_footnote (node)

@@ -32,6 +32,14 @@ Current engines preserve inline markup in both halves of editorial
 substitutions. The published 0.1.6 CLI still supplies plain strings, which the
 inputter continues to render for compatibility.
 
+Release 0.1.8 gave an escaped space and a generated-content opener
+(`::: toc`, `::: footnotes` and the rest) their own AST nodes, and moved a
+footnote reference's label onto the same field its definition uses. The inputter
+reads all three, and still reads the older spellings, so a document typesets on
+either side of that release. A generated region is not built here: this target
+has no table-of-contents builder to hand it to, so the opener degrades to a div
+carrying its kind.
+
 ## Install from this checkout
 
 ```sh
