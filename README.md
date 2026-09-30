@@ -128,6 +128,33 @@ of agreement with itself - the version it installs, the prefix it installs
 into, its wrapper script and the name the tests invoke all have to name the
 same release.
 
+### Upstream source pins
+
+The image also clones resilient.sile, two of its libraries and ten addons at a
+40-hex revision each. Those are not version literals a registry can answer for,
+so each one carries a ruling in `scripts/upstream-pins.tsv` saying what it
+follows and why, and a second check enforces the ruling:
+
+```sh
+./scripts/check-upstream-pins.sh
+```
+
+Two policies exist. `release-tag` means the revision has to be the newest
+semver tag of that repository, which is what the twelve libraries and addons
+use: they are installed with `luarocks make`, so a tagged release is what
+upstream treats as consumable, and a commit landing on the default branch past
+that tag is not staleness. `default-branch` means the revision has to be the
+tip of the default branch, which only resilient.sile uses, because this
+project's rockspec floor is `resilient.sile >= 4.2.0` and upstream has not
+tagged 4.2.0 yet.
+
+The pinned revisions are read from the `Dockerfile` and the targets from the
+GitHub API, so the two compared values never share a source. A repository the
+`Dockerfile` clones but the policy file does not name is a failure, which keeps
+a new source from entering the image unwatched. The check also confirms the
+`resilient.sile` rockspec the image builds meets the floor and exists at the
+revision actually cloned.
+
 ## Current scope
 
 The renderer maps the stable Carve exchange format directly to Resilient's SILE
