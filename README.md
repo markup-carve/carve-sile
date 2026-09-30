@@ -109,6 +109,25 @@ For a reproducible end-to-end run of both using SILE's official container image:
 ./test/container.sh
 ```
 
+### Engine pin
+
+The `Dockerfile` installs two engines: the current lane, which the tests
+measure against, and a `0.1.6` fixture lane the include probes need because
+that release refuses `--include-root`. Both are hand-edited version literals,
+so a check runs on every push and pull request:
+
+```sh
+./scripts/check-engine-pin.sh
+```
+
+It reads the current-lane version out of the `Dockerfile` and the newest
+release from the npm registry, and fails when they differ. The two values come
+from different places on purpose: a check that derived both from the
+`Dockerfile` could never fail. It also fails when the fixture lane drifts out
+of agreement with itself - the version it installs, the prefix it installs
+into, its wrapper script and the name the tests invoke all have to name the
+same release.
+
 ## Current scope
 
 The renderer maps the stable Carve exchange format directly to Resilient's SILE
