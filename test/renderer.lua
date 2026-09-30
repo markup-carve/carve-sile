@@ -192,15 +192,21 @@ do
   )
 end
 
--- 4. The parser carries a non-breaking space as U+E000. Left alone it reaches
--- the typesetter as an unmapped private-use codepoint, and SILE draws the
--- font's .notdef box for it.
+-- 4. An escaped space must reach the typesetter as a no-break space. Up to
+-- carve 0.1.7 the parser carried it as U+E000 inside the text run, and left
+-- alone that is an unmapped private-use codepoint SILE draws as the font's
+-- .notdef box. From 0.1.8 it is its own node, so the space leaves the text run
+-- and becomes resilient's nbsp command. Either spelling satisfies the rule and
+-- the installed CLI picks which one, so both are accepted here; block 5 is what
+-- holds the older path to resolving the sentinel.
 do
   local tree = render("Escaped\\ space here.\n")
   local got = flatten(tree)
+  local resolvedInText = got == "Escaped" .. NBSP .. "space here."
+  local ownNode = got == "Escapedspace here." and firstCommand(tree, "markdown:internal:nbsp") ~= nil
   check(
     "an escaped space becomes a real non-breaking space",
-    got == "Escaped" .. NBSP .. "space here.",
+    resolvedInText or ownNode,
     "got " .. string.format("%q", visible(got))
   )
 end
@@ -410,7 +416,133 @@ do
   )
 end
 
--- 12. Includes. Each target below WOULD resolve if the guard under test were
+-- 12. CARVE-P12-064 makes `code_block.content` the payload's literal text, the
+-- final line break included, and says it does not change `raw_block.content`,
+-- whose last break stays implied. Either way the renderer hands the value over
+-- byte for byte. A strip here costs the payload's last blank line: the host
+-- renders one line per payload line, so "a\n\n" is a line and a blank one while
+-- "a\n" is the line alone, and the four payloads below are four documents.
+--
+-- These nodes are built rather than parsed because the installed CLI decides
+-- which encoding a parse produces, so a fixture alone would say nothing under a
+-- pin from before the clause. The clause admits a built node: content may be
+-- "a" with no final break, distinct from "a\n".
+do
+  local function payloadOf (node)
+    local rendered = Renderer({}):node(node)
+    return rendered and rendered[1]
+  end
+
+  for _, payload in ipairs({ "", "\n", "a", "a\n", "a\n\n" }) do
+    local shown = "\"" .. visible(payload) .. "\""
+    for _, node in ipairs({
+      { type = "code_block", content = payload },
+      { type = "raw_block", format = "html", content = payload },
+    }) do
+      local got = payloadOf(node)
+      check(
+        "a " .. node.type .. " payload reaches SILE unchanged: " .. shown,
+        got == payload,
+        "got \"" .. visible(tostring(got)) .. "\""
+      )
+    end
+  end
+
+  -- And the installed engine's own payload, in whichever encoding it produces.
+  local fence = "```text\nx = 1\n\n```\n"
+  local json, err = bridge.convert(fence, {})
+  if not json then error("carve CLI: " .. tostring(err)) end
+  local parsed
+  local function findCodeBlock (node)
+    if type(node) ~= "table" then return end
+    if node.type == "code_block" then parsed = parsed or node end
+    for _, child in ipairs(node.children or {}) do findCodeBlock(child) end
+  end
+  findCodeBlock(decoder.decode(json))
+  check("the payload fixture parses to a code block", parsed ~= nil)
+  if parsed then
+    local rendered = firstCommand(render(fence), "markdown:internal:codeblock")
+    check(
+      "the parsed payload reaches SILE unchanged",
+      rendered ~= nil and rendered[1] == parsed.content,
+      string.format(
+        "AST %q, rendered %q",
+        visible(tostring(parsed.content)),
+        visible(tostring(rendered and rendered[1]))
+      )
+    )
+  end
+end
+
+-- 13. carve 0.1.8 moved three things the renderer reads. Each one below made a
+-- document that 0.1.7 typesets fail outright, so the assertions are on the
+-- renderer rather than on a rendered page: an unhandled node type is an
+-- SU.error, and a nil footnote label is another. Each fixture is a built tree,
+-- which is what lets the check fire under an older CLI too - that CLI cannot
+-- emit the shapes, and the repo pins no CLI for a reader.
+do
+  local function renderTree (children)
+    return Renderer({}):render({ type = "document", children = children })
+  end
+
+  -- An escaped space. Until 0.1.8 it arrived as the U+E000 sentinel in a text
+  -- node; from 0.1.8 it is its own node and there was no handler for it.
+  local ok, tree = pcall(renderTree, {
+    { type = "paragraph", children = {
+      { type = "text", value = "a" },
+      { type = "non_breaking_space" },
+      { type = "text", value = "b" },
+    } },
+  })
+  check("an escaped space renders", ok, tostring(tree))
+  if ok then
+    check(
+      "an escaped space becomes resilient's own no-break space",
+      firstCommand(tree, "markdown:internal:nbsp") ~= nil,
+      "commands: " .. tostring(tree.command)
+    )
+  end
+
+  -- A generated-content opener. Until 0.1.8 it parsed as an admonition, so the
+  -- admonition handler covered it; from 0.1.8 it is a `directive`.
+  ok, tree = pcall(renderTree, {
+    { type = "directive", kind = "toc", children = {} },
+  })
+  check("a generated-content directive renders", ok, tostring(tree))
+  if ok then
+    local div = firstCommand(tree, "markdown:internal:div")
+    check(
+      "a directive degrades to a div carrying its kind",
+      div ~= nil and div.options and hasClass(div, "toc"),
+      "got command " .. tostring(div and div.command) .. " class " .. tostring(div and div.options and div.options.class)
+    )
+  end
+
+  -- A footnote reference names its definition in `label`. Up to 0.1.7 the
+  -- reference spelled its copy `id`, and reading only `id` looked up nil.
+  for _, field in ipairs({ "label", "id" }) do
+    local ref = { type = "footnote_ref" }
+    ref[field] = "n"
+    local rendered
+    ok, rendered = pcall(renderTree, {
+      { type = "footnote", label = "n", children = {
+        { type = "paragraph", children = { { type = "text", value = "body" } } },
+      } },
+      { type = "paragraph", children = { { type = "text", value = "see" }, ref } },
+    })
+    check("a footnote reference resolves through its " .. field, ok, tostring(rendered))
+    if ok then
+      local note = firstCommand(rendered, "markdown:internal:footnote")
+      check(
+        "the footnote reached by " .. field .. " carries its body",
+        note ~= nil and flatten(note) == "body",
+        "got \"" .. visible(flatten(note or {})) .. "\""
+      )
+    end
+  end
+end
+
+-- 14. Includes. Each target below WOULD resolve if the guard under test were
 -- missing, so a directive left standing is evidence rather than a default.
 do
   local function write (filename, content)
