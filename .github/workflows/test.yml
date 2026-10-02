@@ -4,9 +4,12 @@ on:
   push:
   pull_request:
 
+# Every job below carries a timeout-minutes bound. Without one a job inherits
+# GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
 jobs:
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build and typeset smoke document
@@ -14,6 +17,7 @@ jobs:
 
   engine-pin:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Check the Dockerfile engine pin against the newest release
@@ -21,6 +25,7 @@ jobs:
 
   upstream-pins:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Check the Dockerfile source pins against their ruled targets
