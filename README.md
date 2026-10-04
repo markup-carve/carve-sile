@@ -131,8 +131,10 @@ same release.
 The fixture-lane agreement is what this repository controls, so `local` mode
 runs it on every push and pull request. The comparison with the npm registry
 is upstream moving, not a fault in a pull request, so `drift` mode runs it daily
-from `.github/workflows/pin-drift.yml`, which files one tracking issue while it
-is red and closes it once it is green. No argument runs both.
+from `.github/workflows/pin-drift.yml`. In `drift` mode a stale pin exits 3,
+which files or updates one tracking issue and leaves the run green; a clean run
+closes the issue, and any other failure, such as an unreachable registry, turns
+the run red. No argument runs both.
 
 ### Upstream source pins
 
