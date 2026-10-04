@@ -9,6 +9,9 @@
 # Usage: check-engine-pin.sh [local|drift]. `local` checks only what this repo
 # controls and runs on every pull request; `drift` checks only the comparison
 # with the npm registry and runs on a schedule. No argument runs both.
+#
+# Exit codes: 0 clean, 1 a failure (including the check itself breaking), 3 in
+# drift mode when the only finding is a pin behind the newest release.
 set -eu
 
 mode=${1:-all}
@@ -21,6 +24,16 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 dockerfile="$repo_dir/Dockerfile"
 package="@markup-carve/carve"
 status=0
+drift=0
+
+finish() {
+  if [ "$status" -ne 0 ]; then exit 1; fi
+  if [ "$drift" -ne 0 ]; then
+    if [ "$mode" = drift ]; then exit 3; fi
+    exit 1
+  fi
+  exit 0
+}
 
 pinned=$(sed -n 's|.*--prefix /opt/carve .*'"$package"'@\([0-9][0-9A-Za-z.-]*\).*|\1|p' "$dockerfile")
 fixture=$(sed -n 's|.*--prefix /opt/carve-\([0-9][0-9A-Za-z.-]*\) .*'"$package"'@\([0-9][0-9A-Za-z.-]*\).*|\1 \2|p' "$dockerfile")
@@ -49,7 +62,7 @@ if [ "$mode" != local ]; then
   else
     echo "FAIL: the current-lane engine pin is stale."
     echo "      bump $package@$pinned to $package@$latest in the Dockerfile."
-    status=1
+    drift=1
   fi
 fi
 
@@ -80,7 +93,7 @@ if [ "$mode" != local ] && [ "$fixture_version" = "$latest" ]; then
 fi
 
 if [ "$mode" = drift ]; then
-  exit "$status"
+  finish
 fi
 
 for spelling in \
@@ -103,4 +116,4 @@ if ! grep -rq "carve-$fixture_version" "$repo_dir/test"; then
   status=1
 fi
 
-exit "$status"
+finish

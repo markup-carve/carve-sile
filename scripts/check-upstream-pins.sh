@@ -12,6 +12,9 @@
 # repo controls (every pin has a valid policy row, the rockspec floor) and runs
 # on every pull request; `drift` checks only the pins against their upstream
 # targets and runs on a schedule. No argument runs both.
+#
+# Exit codes: 0 clean, 1 a failure (including the check itself breaking), 3 in
+# drift mode when the only findings are pins behind their upstream targets.
 set -eu
 
 mode=${1:-all}
@@ -25,7 +28,17 @@ dockerfile="$repo_dir/Dockerfile"
 policy="$repo_dir/scripts/upstream-pins.tsv"
 rockspec="$repo_dir/carve-sile-dev-1.rockspec"
 status=0
+drift=0
 tab=$(printf '\t')
+
+finish() {
+  if [ "$status" -ne 0 ]; then exit 1; fi
+  if [ "$drift" -ne 0 ]; then
+    if [ "$mode" = drift ]; then exit 3; fi
+    exit 1
+  fi
+  exit 0
+}
 
 api() {
   if [ -n "${GITHUB_TOKEN:-}" ]; then
@@ -106,14 +119,14 @@ while IFS="$tab" read -r slug sha; do
   else
     echo "FAIL: $slug is pinned at $sha, but the $what is $target_sha."
     echo "      bump the pin in the Dockerfile, or change its row in scripts/upstream-pins.tsv."
-    status=1
+    drift=1
   fi
 done <<PINS
 $pins
 PINS
 
 if [ "$mode" = drift ]; then
-  exit "$status"
+  finish
 fi
 
 # The rockspec the image builds out of the resilient.sile checkout has to satisfy
@@ -149,4 +162,4 @@ except Exception:
   fi
 fi
 
-exit "$status"
+finish

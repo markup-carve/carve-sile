@@ -2,6 +2,7 @@ name: Pin drift
 
 # Scheduled, not per pull request: "upstream moved" is not a failure of a pull
 # request's change. test.yml checks the pins' local consistency on every PR.
+# A drift verdict files a ticket and the run stays green; a broken check is red.
 on:
   schedule:
     - cron: "0 5 * * *"
@@ -23,19 +24,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Records its exit status before failing so the reporter can read it.
+      # Drift mode exits 3 on upstream drift alone; any other non-zero exit is
+      # the check itself failing, and only that turns the run red.
       - name: Check the Dockerfile pins against upstream
         id: measure
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          status=0
-          {
-            ./scripts/check-engine-pin.sh drift || status=1
-            ./scripts/check-upstream-pins.sh drift || status=1
-          } > /tmp/pin-drift.txt 2>&1
+          verdict=clean
+          for check in check-engine-pin.sh check-upstream-pins.sh; do
+            rc=0
+            ./scripts/$check drift >> /tmp/pin-drift.txt 2>&1 || rc=$?
+            case "$rc" in
+              0) ;;
+              3) [ "$verdict" = broken ] || verdict=drift ;;
+              *) verdict=broken; echo "::error::$check exited $rc, so it could not measure drift." ;;
+            esac
+          done
           cat /tmp/pin-drift.txt
-          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
           {
             echo '## Dockerfile pins'
             echo
@@ -43,17 +50,17 @@ jobs:
             cat /tmp/pin-drift.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
+          if [ "$verdict" = broken ]; then exit 1; fi
 
-      # One tracking issue, opened by the first red run, edited by later ones,
-      # closed by the first green one. Fails if it cannot file.
+      # One tracking issue, opened by the first drift verdict, edited by later
+      # ones, closed by the first clean run. Fails if it cannot file.
       - name: File the verdict where someone reads it
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          STATUS: ${{ steps.measure.outputs.status }}
+          VERDICT: ${{ steps.measure.outputs.verdict }}
           HEAD_SHA: ${{ github.sha }}
           REF_NAME: ${{ github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
@@ -75,11 +82,19 @@ jobs:
                 '.[] | select(.pull_request == null) | select((.body // "") | contains($m)) | .number')"
           issue="${open_issues%%$'\n'*}"
 
-          if [ "${STATUS:-1}" = "0" ]; then
+          case "${VERDICT:-}" in
+            clean|drift) ;;
+            *)
+              echo "No verdict to file: the measure step failed, and the run stays red."
+              exit 0
+              ;;
+          esac
+
+          if [ "$VERDICT" = clean ]; then
             echo "The pins are current on $HEAD_SHA."
             if [ -n "$issue" ]; then
               gh issue comment "$issue" --repo "$REPO" --body \
-                "Green again: run $RUN_URL on \`$HEAD_SHA\`. Closing. The next red run opens a fresh ticket rather than reopening this one."
+                "Clean again: run $RUN_URL on \`$HEAD_SHA\`. Closing. The next drift verdict opens a fresh ticket rather than reopening this one."
               gh issue close "$issue" --repo "$REPO"
               echo "Closed #$issue."
             fi
@@ -113,8 +128,8 @@ jobs:
             echo "\`./scripts/check-upstream-pins.sh drift\`."
             echo
             echo "This ticket is filed and maintained by the workflow. It is EDITED by each"
-            echo "later red run and CLOSED by the first green one. Closing it by hand does"
-            echo "not silence it: the next red run files a new one."
+            echo "later drift verdict and CLOSED by the first clean run. Closing it by hand"
+            echo "does not silence it: the next drift verdict files a new one."
           } > /tmp/pin-drift-verdict.md
 
           if [ -n "$issue" ]; then
