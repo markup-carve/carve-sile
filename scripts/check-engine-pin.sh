@@ -5,7 +5,17 @@
 #
 # The two compared values come from different places on purpose: the pinned one
 # is parsed out of the Dockerfile, the current one is read from the npm registry.
+#
+# Usage: check-engine-pin.sh [local|drift]. `local` checks only what this repo
+# controls and runs on every pull request; `drift` checks only the comparison
+# with the npm registry and runs on a schedule. No argument runs both.
 set -eu
+
+mode=${1:-all}
+case "$mode" in
+  all|local|drift) ;;
+  *) echo "usage: $0 [local|drift]" >&2; exit 2 ;;
+esac
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 dockerfile="$repo_dir/Dockerfile"
@@ -21,23 +31,26 @@ if [ -z "$pinned" ]; then
   exit 1
 fi
 
-latest=$(curl -fsSL "https://registry.npmjs.org/$(printf %s "$package" | sed 's|/|%2f|')" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["dist-tags"]["latest"])')
-
-if [ -z "$latest" ]; then
-  echo "FAIL: could not read the latest dist-tag for $package from the npm registry."
-  exit 1
-fi
-
 echo "current-lane pin (Dockerfile): $pinned"
-echo "latest release (npm registry): $latest"
 
-if [ "$pinned" = "$latest" ]; then
-  echo "OK: the current lane is pinned at the newest release."
-else
-  echo "FAIL: the current-lane engine pin is stale."
-  echo "      bump $package@$pinned to $package@$latest in the Dockerfile."
-  status=1
+if [ "$mode" != local ]; then
+  latest=$(curl -fsSL "https://registry.npmjs.org/$(printf %s "$package" | sed 's|/|%2f|')" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["dist-tags"]["latest"])')
+
+  if [ -z "$latest" ]; then
+    echo "FAIL: could not read the latest dist-tag for $package from the npm registry."
+    exit 1
+  fi
+
+  echo "latest release (npm registry): $latest"
+
+  if [ "$pinned" = "$latest" ]; then
+    echo "OK: the current lane is pinned at the newest release."
+  else
+    echo "FAIL: the current-lane engine pin is stale."
+    echo "      bump $package@$pinned to $package@$latest in the Dockerfile."
+    status=1
+  fi
 fi
 
 # The fixture lane is a deliberate older engine, so it is never compared against
@@ -54,16 +67,20 @@ fixture_dir=${fixture% *}
 fixture_version=${fixture#* }
 echo "fixture-lane pin (Dockerfile): $fixture_version, installed into /opt/carve-$fixture_dir"
 
-if [ "$fixture_dir" != "$fixture_version" ]; then
+if [ "$mode" != drift ] && [ "$fixture_dir" != "$fixture_version" ]; then
   echo "FAIL: the fixture lane installs $package@$fixture_version into /opt/carve-$fixture_dir."
   echo "      the prefix directory has to name the version it holds."
   status=1
 fi
 
-if [ "$fixture_version" = "$latest" ]; then
+if [ "$mode" != local ] && [ "$fixture_version" = "$latest" ]; then
   echo "FAIL: the fixture lane names the newest release, $latest."
   echo "      it exists to hold an older engine, so it cannot track latest."
   status=1
+fi
+
+if [ "$mode" = drift ]; then
+  exit "$status"
 fi
 
 for spelling in \

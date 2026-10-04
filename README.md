@@ -114,7 +114,7 @@ For a reproducible end-to-end run of both using SILE's official container image:
 The `Dockerfile` installs two engines: the current lane, which the tests
 measure against, and a `0.1.6` fixture lane the include probes need because
 that release refuses `--include-root`. Both are hand-edited version literals,
-so a check runs on every push and pull request:
+so a check watches them:
 
 ```sh
 ./scripts/check-engine-pin.sh
@@ -127,6 +127,12 @@ from different places on purpose: a check that derived both from the
 of agreement with itself - the version it installs, the prefix it installs
 into, its wrapper script and the name the tests invoke all have to name the
 same release.
+
+The fixture-lane agreement is what this repository controls, so `local` mode
+runs it on every push and pull request. The comparison with the npm registry
+is upstream moving, not a fault in a pull request, so `drift` mode runs it daily
+from `.github/workflows/pin-drift.yml`, which files one tracking issue while it
+is red and closes it once it is green. No argument runs both.
 
 ### Upstream source pins
 
@@ -147,6 +153,11 @@ that tag is not staleness. `default-branch` means the revision has to be the
 tip of the default branch, which only resilient.sile uses, because this
 project's rockspec floor is `resilient.sile >= 4.2.0` and upstream has not
 tagged 4.2.0 yet.
+
+The modes split the same way: `local` (every push and pull request) checks that
+every cloned source has a valid row and that the built resilient.sile rockspec
+meets the floor at the pinned revision; `drift` (the daily `pin-drift.yml` run)
+compares each pin with its upstream target.
 
 The pinned revisions are read from the `Dockerfile` and the targets from the
 GitHub API, so the two compared values never share a source. A repository the

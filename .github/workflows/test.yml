@@ -20,15 +20,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Check the Dockerfile engine pin against the newest release
-        run: ./scripts/check-engine-pin.sh
+      # The comparison with the newest release runs in pin-drift.yml.
+      - name: Check the Dockerfile engine pins agree with each other
+        run: ./scripts/check-engine-pin.sh local
 
   upstream-pins:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Check the Dockerfile source pins against their ruled targets
-        run: ./scripts/check-upstream-pins.sh
+      # The comparison with each upstream target runs in pin-drift.yml.
+      - name: Check every Dockerfile source pin is ruled and the rockspec floor holds
+        run: ./scripts/check-upstream-pins.sh local
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
