@@ -7,7 +7,18 @@
 # is parsed out of the Dockerfile, the target is read from the GitHub API. A pin
 # the Dockerfile clones but the policy file does not name is a failure, so a new
 # source cannot enter the image unwatched.
+#
+# Usage: check-upstream-pins.sh [local|drift]. `local` checks only what this
+# repo controls (every pin has a valid policy row, the rockspec floor) and runs
+# on every pull request; `drift` checks only the pins against their upstream
+# targets and runs on a schedule. No argument runs both.
 set -eu
+
+mode=${1:-all}
+case "$mode" in
+  all|local|drift) ;;
+  *) echo "usage: $0 [local|drift]" >&2; exit 2 ;;
+esac
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 dockerfile="$repo_dir/Dockerfile"
@@ -64,6 +75,20 @@ while IFS="$tab" read -r slug sha; do
   fi
 
   case "$rule" in
+    release-tag|default-branch) ;;
+    *)
+      echo "FAIL: $slug has an unknown policy '$rule' in scripts/upstream-pins.tsv."
+      status=1
+      continue
+      ;;
+  esac
+
+  if [ "$mode" = local ]; then
+    echo "OK: $slug follows its $rule row."
+    continue
+  fi
+
+  case "$rule" in
     release-tag)
       target=$(newest_tag "$slug")
       target_sha=${target#* }
@@ -73,11 +98,6 @@ while IFS="$tab" read -r slug sha; do
       branch=$(api "repos/$slug" | python3 -c 'import json,sys; print(json.load(sys.stdin)["default_branch"])')
       target_sha=$(api "repos/$slug/commits/$branch" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
       what="tip of $branch"
-      ;;
-    *)
-      echo "FAIL: $slug has an unknown policy '$rule' in scripts/upstream-pins.tsv."
-      status=1
-      continue
       ;;
   esac
 
@@ -91,6 +111,10 @@ while IFS="$tab" read -r slug sha; do
 done <<PINS
 $pins
 PINS
+
+if [ "$mode" = drift ]; then
+  exit "$status"
+fi
 
 # The rockspec the image builds out of the resilient.sile checkout has to satisfy
 # this project's own floor, and has to exist at the revision actually cloned.
