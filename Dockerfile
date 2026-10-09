@@ -4,7 +4,7 @@ FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494
 # installing the package gets. The 0.1.6 lane is a fixture, not a stale pin:
 # it is the newest release without include support, and the probe tests need
 # an engine that refuses --include-root.
-RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.9 \
+RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.10 \
     && npm install --prefix /opt/carve-0.1.6 --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.6 \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
     && cd /opt/resilient.sile \
