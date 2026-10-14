@@ -91,9 +91,28 @@ function Renderer:children (node, field)
   return output
 end
 
+-- An unknown type degrades to its content with a warning rather than aborting
+-- the document: a newer engine or an extension can add types at any time.
+function Renderer:unsupported (node)
+  SU.warn("Carve AST node type '" .. tostring(node.type) .. "' is not supported; rendering its content as plain text")
+  if type(node.fallback) == "table" then return self:node(node.fallback) end
+  for _, field in ipairs({ "children", "inline", "content" }) do
+    if type(node[field]) == "table" then return self:children(node, field) end
+  end
+  if type(node.pairs) == "table" then
+    local output = {}
+    for _, pair in ipairs(node.pairs) do output[#output + 1] = self:children(pair, "base") end
+    return output
+  end
+  for _, field in ipairs({ "value", "content", "text" }) do
+    if type(node[field]) == "string" then return resolveNbsp(node[field]) end
+  end
+  return nil
+end
+
 function Renderer:node (node)
   local handler = self[node.type]
-  if not handler then SU.error("Unsupported Carve AST node type '" .. tostring(node.type) .. "'") end
+  if not handler then return self:unsupported(node) end
   return handler(self, node)
 end
 

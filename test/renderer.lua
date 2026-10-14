@@ -702,5 +702,23 @@ do
   check("a rowspan keeps an empty cell below its origin", got == "a|b/|c", got)
 end
 
+-- 17. A node type without a handler degrades to its content instead of aborting.
+do
+  local doc = { type = "document", children = {
+    { type = "paragraph", children = {
+      { type = "text", value = "a " },
+      { type = "small_caps", children = { { type = "text", value = "Caps" } } },
+      { type = "text", value = " b " },
+      { type = "ruby", pairs = { { base = { { type = "text", value = "Base" } }, annotation = { { type = "text", value = "x" } } } } },
+    } },
+    { type = "block_extension", name = "org.example", fallback = { type = "paragraph", children = { { type = "text", value = "Fallback" } } } },
+    { type = "future_node" },
+  } }
+  local ok, tree = pcall(function () return Renderer({}):render(doc) end)
+  local text = ok and flatten(tree) or tostring(tree)
+  check("an unknown inline renders its children", ok and text:find("a Caps b Base", 1, true) ~= nil, text)
+  check("an unknown block renders its fallback", ok and text:find("Fallback", 1, true) ~= nil, text)
+end
+
 print(string.format("\n%d checks, %d failed", run, #failed))
 os.exit(#failed == 0 and 0 or 1)
