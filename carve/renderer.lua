@@ -101,6 +101,8 @@ function Renderer:document (node) return self:children(node) end
 function Renderer:text (node) return resolveNbsp(node.value) end
 function Renderer:escaped_text (node) return node.value end
 function Renderer:soft_break (_) return " " end
+-- A `+` continuation row join inside a table cell (AST contract 1.1).
+function Renderer:cell_wrap (_) return " " end
 function Renderer:hard_break (_) return createCommand("markdown:internal:hardbreak") end
 
 -- Its own node since carve 0.1.8; before that an escaped space arrived as the
@@ -191,8 +193,37 @@ function Renderer:table (node, extraClass)
   local columns = rows[1] and #(rows[1].cells or {}) or 1
   local widths = {}
   for i = 1, columns do widths[i] = string.format("%.5f%%lw", 99.9 / columns) end
+  -- The engine publishes each origin's resolved colspan/rowspan; a marker no
+  -- origin covers is blocked and stays an ordinary cell. ptable spans columns
+  -- only, so a position covered from above keeps an empty cell per strip.
+  local covered = {}
+  for r, row in ipairs(rows) do
+    for c, cell in ipairs(row.cells or {}) do
+      if cell.span == nil then
+        local cols, rowsDown = cell.colspan or 1, cell.rowspan or 1
+        for dr = 0, rowsDown - 1 do
+          for dc = 0, cols - 1 do
+            if dr > 0 or dc > 0 then
+              covered[(r + dr) .. ":" .. (c + dc)] = { above = dr > 0, first = dc == 0, cols = cols }
+            end
+          end
+        end
+      end
+    end
+  end
   local content = {}
-  for _, row in ipairs(rows) do content[#content + 1] = self:node(row) end
+  for r, row in ipairs(rows) do
+    local cells = {}
+    for c, cell in ipairs(row.cells or {}) do
+      local cover = cell.span ~= nil and covered[r .. ":" .. c] or nil
+      if not cover then
+        cells[#cells + 1] = self:node(cell)
+      elseif cover.above and cover.first then
+        cells[#cells + 1] = createStructuredCommand("cell", { span = cover.cols > 1 and cover.cols or nil }, {}, pos(cell))
+      end
+    end
+    content[#content + 1] = createStructuredCommand("row", {}, cells, pos(row))
+  end
   local tableNode = createStructuredCommand("ptable", {
     cols = table.concat(widths, " "),
     header = rows[1] and rows[1].cells and rows[1].cells[1] and rows[1].cells[1].header or false,
@@ -212,10 +243,7 @@ end
 
 function Renderer:table_cell (node)
   local options = { halign = node.align }
-  if node.span then
-    options.colspan = node.span.cols
-    options.rowspan = node.span.rows
-  end
+  if node.span == nil and (node.colspan or 1) > 1 then options.span = node.colspan end
   return createStructuredCommand("cell", options, self:children(node), pos(node))
 end
 
