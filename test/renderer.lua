@@ -676,5 +676,31 @@ do
   check("a continuation row joins its cell with one space", text:find("1 x", 1, true) ~= nil, text)
 end
 
+-- 16. Spans come from the counts the engine publishes on the origin cell. A
+-- resolved `<` is no cell of its own, a blocked one stays a cell, and ptable
+-- has no row spanning, so a position covered from above stays an empty cell.
+do
+  local function rowsOf (source)
+    local out = {}
+    for _, node in ipairs(tables(render(source))) do
+      if node.command == "row" then
+        local row = {}
+        for i = 1, #node do
+          local cell = node[i]
+          row[#row + 1] = (cell.options and cell.options.span and ("span" .. cell.options.span .. ":") or "") .. flatten(cell)
+        end
+        out[#out + 1] = table.concat(row, "|")
+      end
+    end
+    return table.concat(out, "/")
+  end
+  local got = rowsOf("| a | < | c |\n| x | y | z |\n")
+  check("a resolved colspan widens its origin", got == "span2:a|c/x|y|z", got)
+  got = rowsOf("| a | b |\n| < | c |\n+ d | e |\n")
+  check("a blocked marker stays a cell with its text", got == "a|b/d|c e", got)
+  got = rowsOf("| a | b |\n| ^ | c |\n")
+  check("a rowspan keeps an empty cell below its origin", got == "a|b/|c", got)
+end
+
 print(string.format("\n%d checks, %d failed", run, #failed))
 os.exit(#failed == 0 and 0 or 1)
