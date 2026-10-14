@@ -101,6 +101,8 @@ function Renderer:document (node) return self:children(node) end
 function Renderer:text (node) return resolveNbsp(node.value) end
 function Renderer:escaped_text (node) return node.value end
 function Renderer:soft_break (_) return " " end
+-- A `+` continuation row join inside a table cell (AST contract 1.1).
+function Renderer:cell_wrap (_) return " " end
 function Renderer:hard_break (_) return createCommand("markdown:internal:hardbreak") end
 
 -- Its own node since carve 0.1.8; before that an escaped space arrived as the

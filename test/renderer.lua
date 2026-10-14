@@ -668,5 +668,13 @@ do
   pl.dir.rmtree(base)
 end
 
+-- 15. A `+` continuation row joins onto the cell above. From carve 0.1.11 the
+-- join is a `cell_wrap` node, which has no handler unless one is defined, and
+-- an unknown type aborts the whole render.
+do
+  local text = flatten(render("| a | b |\n|---|---|\n| 1 | 2 |\n+ x | y |\n"))
+  check("a continuation row joins its cell with one space", text:find("1 x", 1, true) ~= nil, text)
+end
+
 print(string.format("\n%d checks, %d failed", run, #failed))
 os.exit(#failed == 0 and 0 or 1)
