@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Drift mode exits 3 on upstream drift alone; any other non-zero exit is
       # the check itself failing, and only that turns the run red.

@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build and typeset smoke document
         run: ./test/container.sh
 
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The comparison with the newest release runs in pin-drift.yml.
       - name: Check the Dockerfile engine pins agree with each other
         run: ./scripts/check-engine-pin.sh local
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The comparison with each upstream target runs in pin-drift.yml.
       - name: Check every Dockerfile source pin is ruled and the rockspec floor holds
         run: ./scripts/check-upstream-pins.sh local
