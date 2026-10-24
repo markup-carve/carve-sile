@@ -4,11 +4,11 @@ FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494
 # installing the package gets. The 0.1.6 lane is a fixture, not a stale pin:
 # it is the newest release without include support, and the probe tests need
 # an engine that refuses --include-root.
-RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.11 \
+RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.13 \
     && npm install --prefix /opt/carve-0.1.6 --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.6 \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
     && cd /opt/resilient.sile \
-    && git checkout 739d00222d9e983f3580b33081b5c5fb0711de2e \
+    && git checkout e29f6d6baece7d8341fbbaeeb32dc2d62710f4ad \
     && git clone https://github.com/Omikhleia/grail.git /opt/grail \
     && cd /opt/grail && git checkout 4a7bb3fdbd14c9aa29992b7367ec8f7ad733d9d6 \
     && git clone https://github.com/Omikhleia/rough-lua.git /opt/rough \
