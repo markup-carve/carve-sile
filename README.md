@@ -80,9 +80,9 @@ as an unchanged file has no directory, so its directives stay literal unless
 
 A directive that does not resolve stays in the output, and SILE prints a warning
 naming it with the file path relative to the root. Includes need a `carve` CLI with
-include support, which no published `@markup-carve/carve` release has yet. With
-an older CLI the directives stay literal and a warning says so, and setting
-`include_root` is an error.
+include support, available in the current published `@markup-carve/carve` release.
+With an older CLI that lacks this support, the directives stay literal and a
+warning says so; setting `include_root` is an error.
 
 When SILE runs with `--makedeps`, resolved include targets are added to its
 dependency file. Missing targets remain warnings because SILE's dependency
