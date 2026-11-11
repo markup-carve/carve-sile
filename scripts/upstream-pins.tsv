@@ -17,7 +17,7 @@
 # The reason column says what the pin provides, so a later reader can tell which
 # rendering stops working if the pin is dropped.
 #
-Omikhleia/resilient.sile	default-branch	The adapter's rockspec floor is resilient.sile >= 4.2.0 and upstream has not tagged 4.2.0 yet. The newest tag is v4.1.0, so following main is the only way to reach the 4.2.0 rockspec this image builds.
+Omikhleia/resilient.sile	release-tag	The document classes the renderer targets. Upstream tags releases again (v4.2.0, v4.2.1), so the image follows the newest tag like the libraries and addons; main past v4.2.1 adds packages its tagged 4.2.x rockspecs do not list.
 Omikhleia/grail	release-tag	Graphics intermediate layer that resilient.sile draws through.
 Omikhleia/rough-lua	release-tag	Sketchy drawing library the ornament and chart addons call into.
 Omikhleia/barcodes.sile	release-tag	Barcode rendering.

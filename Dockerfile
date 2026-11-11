@@ -8,7 +8,7 @@ RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund @markup-carv
     && npm install --prefix /opt/carve-0.1.6 --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.6 \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
     && cd /opt/resilient.sile \
-    && git checkout e29f6d6baece7d8341fbbaeeb32dc2d62710f4ad \
+    && git checkout ae83dd9dda6f70112982b43845d154cef7abdbec \
     && git clone https://github.com/Omikhleia/grail.git /opt/grail \
     && cd /opt/grail && git checkout 4a7bb3fdbd14c9aa29992b7367ec8f7ad733d9d6 \
     && git clone https://github.com/Omikhleia/rough-lua.git /opt/rough \
@@ -54,7 +54,7 @@ RUN chmod +x /usr/local/bin/carve /usr/local/bin/carve-0.1.6 \
     && cd /opt/grail && luarocks make --deps-mode=none \
     && for addon in /opt/addons/*; do cd "$addon" && luarocks make --deps-mode=none; done \
     && cd /opt/resilient.sile \
-    && luarocks make --deps-mode=none rockspecs/resilient.sile-4.2.0-1.rockspec
+    && luarocks make --deps-mode=none rockspecs/resilient.sile-4.2.1-1.rockspec
 
 WORKDIR /work
 COPY . /work
