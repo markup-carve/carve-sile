@@ -148,13 +148,11 @@ follows and why, and a second check enforces the ruling:
 ```
 
 Two policies exist. `release-tag` means the revision has to be the newest
-semver tag of that repository, which is what the twelve libraries and addons
-use: they are installed with `luarocks make`, so a tagged release is what
-upstream treats as consumable, and a commit landing on the default branch past
-that tag is not staleness. `default-branch` means the revision has to be the
-tip of the default branch, which only resilient.sile uses, because this
-project's rockspec floor is `resilient.sile >= 4.2.0` and upstream has not
-tagged 4.2.0 yet.
+semver tag of that repository, which is what resilient.sile and all twelve
+libraries and addons use: they are installed with `luarocks make`, so a tagged
+release is what upstream treats as consumable, and a commit landing on the
+default branch past that tag is not staleness. `default-branch` means the
+revision has to be the tip of the default branch; no source uses it today.
 
 The modes split the same way: `local` (every push and pull request) checks that
 every cloned source has a valid row and that the built resilient.sile rockspec
