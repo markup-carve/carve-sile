@@ -1,4 +1,4 @@
---- Parse Carve source into its normative exchange JSON AST.
+--- Parse Carve source into the Carve 0.2 tree (AST contract 2.0) as JSON.
 
 local bridge = {}
 
@@ -27,27 +27,6 @@ local function isAbsolute (path)
   return path:match("^/") ~= nil or (windows and path:match("^[A-Za-z]:[\\/]") ~= nil)
 end
 
-local supportCache = {}
-
-local function helpText (converter)
-  if supportCache[converter] == nil then
-    local _, _, stdout, stderr = pl.utils.executeex(shellQuote(converter) .. " --help")
-    supportCache[converter] = (stdout or "") .. (stderr or "")
-  end
-  return supportCache[converter]
-end
-
---- Whether the converter's CLI knows --include-root. Published
--- @markup-carve/carve 0.1.6 does not, and refuses the flag outright.
-function bridge.supportsIncludes (converter)
-  return helpText(converter):find("--include-root", 1, true) ~= nil
-end
-
---- Whether the converter can publish include dependency identities.
-function bridge.supportsIncludeReport (converter)
-  return helpText(converter):find("--report-includes", 1, true) ~= nil
-end
-
 --- The directory with symlinks resolved, which is how the CLI names files.
 local function realDirectory (dir)
   local lfs = require("lfs")
@@ -69,7 +48,43 @@ local function relativeToRoot (text, root)
   return text
 end
 
---- Convert Carve source to exchange JSON.
+local function jsonDecoder ()
+  local hasJson, decoder = pcall(require, "json.decode")
+  if not hasJson then hasJson, decoder = pcall(require, "lunajson") end
+  return hasJson and decoder or nil
+end
+
+--- The include report of `carve ast --report-includes`, as the inputter reads
+-- it: one entry per directive, `id` the absolute path of a file that was read.
+-- The CLI names files by their id below the include root (C2-N-007).
+local function readDependencies (reportName, root)
+  local handle = io.open(reportName, "rb")
+  if not handle then return {}, "Carve parser produced no include dependency report" end
+  local report = handle:read("*a")
+  handle:close()
+  local decoder = jsonDecoder()
+  if not decoder then return {}, "The Carve bridge requires luajson or lunajson for include dependency reports" end
+  local ok, decoded = pcall(decoder.decode, report)
+  if not ok or type(decoded) ~= "table" or type(decoded.files) ~= "table" then
+    return {}, "Carve parser produced an invalid include dependency report"
+  end
+  local dependencies = {}
+  for _, file in ipairs(decoded.files) do
+    for _, dependency in ipairs(type(file.dependencies) == "table" and file.dependencies or {}) do
+      local id
+      if type(dependency.file) == "string" then
+        id = pl.path.normpath(pl.path.join(root, dependency.file))
+      elseif type(dependency.path) == "string" then
+        local from = type(dependency.from) == "string" and pl.path.dirname(dependency.from) or ""
+        id = pl.path.normpath(pl.path.join(root, from, dependency.path))
+      end
+      dependencies[#dependencies + 1] = { id = id, path = dependency.path, resolved = dependency.read == true }
+    end
+  end
+  return dependencies
+end
+
+--- Convert Carve source to its tree as JSON.
 --
 -- options.converter     CLI executable, default "carve"
 -- options.source_path   the file `source` was read from; relative directives
@@ -78,6 +93,8 @@ end
 -- options.include_root  absolute containment root; default the source file's
 --                       directory, and none for source without a file
 -- options.includes      false leaves directives literal
+--
+-- Returns the JSON text, an error, the warnings and the include dependencies.
 function bridge.convert (source, options)
   options = options or {}
   local converter = options.converter or "carve"
@@ -92,88 +109,66 @@ function bridge.convert (source, options)
 
   local hasDirective = source:find("{{", 1, true) ~= nil
   local includesOn = options.includes ~= false and (root ~= nil or (sourcePath ~= nil and hasDirective))
-  -- Stdin has no directory, so only a file needs --no-includes to stay literal.
-  local needsNoIncludes = options.includes == false and sourcePath ~= nil and hasDirective
-  local supported = (includesOn or needsNoIncludes) and bridge.supportsIncludes(converter)
-  local warning
-  if includesOn and not supported then
-    if root ~= nil then
-      return nil, "Carve include_root cannot be used: " .. converter .. " has no include support"
-    end
-    warning = "include directives left literal: " .. converter .. " has no include support"
-  end
+  -- The CLI expands the includes of a named file, so source whose directives
+  -- must stay literal goes over stdin, which has no directory to resolve against.
+  local fromFile = sourcePath ~= nil and options.includes ~= false
 
-  local command = shellQuote(converter)
-  local stdinName
-  if sourcePath then
-    command = command .. " " .. shellQuote(sourcePath)
+  local flags = ""
+  local reportName
+  if includesOn then
+    flags = " --includes"
+    if root ~= nil then flags = flags .. " --include-root " .. shellQuote(root) end
+    reportName = os.tmpname()
+  end
+  local input, stdinName
+  if fromFile then
+    input = " " .. shellQuote(sourcePath)
   else
     stdinName = os.tmpname()
     local ok, err = writeFile(stdinName, source)
     if not ok then
       return nil, "cannot create temporary Carve input: " .. tostring(err)
     end
-  end
-  command = command .. " --json"
-  if supported and needsNoIncludes then
-    command = command .. " --no-includes"
-  elseif supported and includesOn and root ~= nil then
-    command = command .. " --include-root " .. shellQuote(root)
-  end
-  local reportName
-  if supported and includesOn and bridge.supportsIncludeReport(converter) then
-    reportName = os.tmpname()
-    command = command .. " --report-includes " .. shellQuote(reportName)
-  end
-  if stdinName then
-    command = command .. " < " .. shellQuote(stdinName)
+    input = " < " .. shellQuote(stdinName)
   end
 
-  local success, code, stdout, stderr = pl.utils.executeex(command)
-  if stdinName then os.remove(stdinName) end
-  local dependencies = {}
-  local reportError
-  if reportName then
-    local handle = io.open(reportName, "rb")
-    if handle then
-      local report = handle:read("*a")
-      handle:close()
-      local hasJson, decoder = pcall(require, "json.decode")
-      if not hasJson then hasJson, decoder = pcall(require, "lunajson") end
-      if hasJson then
-        local ok, decoded = pcall(decoder.decode, report)
-        if ok and type(decoded) == "table" and type(decoded.dependencies) == "table" then
-          dependencies = decoded.dependencies
-        else
-          reportError = "Carve parser produced an invalid include dependency report"
-        end
-      else
-        reportError = "The Carve bridge requires luajson or lunajson for include dependency reports"
-      end
-    else
-      reportError = "Carve parser produced no include dependency report"
+  local command = shellQuote(converter) .. " ast" .. flags
+  if reportName then command = command .. " --report-includes " .. shellQuote(reportName) end
+  local success, code, stdout, stderr = pl.utils.executeex(command .. input)
+
+  -- `carve ast` prints the tree only; the include warnings come from
+  -- `carve diagnostics`, which parses with the same flags.
+  local warnings = stderr or ""
+  if success and includesOn and hasDirective then
+    local _, _, diagnostics = pl.utils.executeex(shellQuote(converter) .. " diagnostics" .. flags .. input)
+    for line in (diagnostics or ""):gmatch("[^\n]+") do
+      if line:find(" include%-") then warnings = warnings .. line .. "\n" end
     end
+  end
+  if stdinName then os.remove(stdinName) end
+
+  local dependencies, reportError = {}, nil
+  local base = root or (sourcePath and pl.path.dirname(pl.path.abspath(sourcePath)))
+  if reportName then
+    if success and base then dependencies, reportError = readDependencies(reportName, pl.path.abspath(base)) end
     os.remove(reportName)
   end
-  stderr = relativeToRoot(stderr, root or (sourcePath and pl.path.dirname(sourcePath)))
-  if warning then
-    stderr = warning .. "\n" .. (stderr or "")
-  end
+  warnings = relativeToRoot(warnings, base)
   if reportError then
-    stderr = (stderr or "") .. reportError .. "\n"
+    warnings = warnings .. reportError .. "\n"
   end
 
   if not success then
-    local detail = stderr and stderr:gsub("%s+$", "") or ""
+    local detail = warnings:gsub("%s+$", "")
     if detail == "" then
       detail = "exit status " .. tostring(code)
     end
     return nil, "Carve parser failed: " .. detail
   end
   if not stdout or stdout:match("^%s*$") then
-    return nil, "Carve parser produced no exchange AST"
+    return nil, "Carve parser produced no tree"
   end
-  return stdout, nil, stderr, dependencies
+  return stdout, nil, warnings, dependencies
 end
 
 return bridge
