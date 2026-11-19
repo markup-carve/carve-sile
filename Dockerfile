@@ -1,11 +1,8 @@
 FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a AS build
 
-# The current lane is the released CLI, so the tests measure what a user
-# installing the package gets. The 0.1.6 lane is a fixture, not a stale pin:
-# it is the newest release without include support, and the probe tests need
-# an engine that refuses --include-root.
-RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.16 \
-    && npm install --prefix /opt/carve-0.1.6 --omit=dev --no-audit --no-fund @markup-carve/carve@0.1.6 \
+# The engine is the carve-js Carve 0.2 line (`next2`), pinned by commit until
+# it is released. npm builds dist/ from the git checkout on install.
+RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund github:markup-carve/carve-js#f124a42c9800daf77c772f050be57164171231a0 \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
     && cd /opt/resilient.sile \
     && git checkout ae83dd9dda6f70112982b43845d154cef7abdbec \
@@ -39,14 +36,12 @@ FROM siletypesetter/sile@sha256:3643ad31e39952fffdbbc8c058e37e9454f3c0a0d7bc5163
 
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /opt/carve /opt/carve
-COPY --from=build /opt/carve-0.1.6 /opt/carve-0.1.6
 COPY --from=build /opt/resilient.sile /opt/resilient.sile
 COPY --from=build /opt/grail /opt/grail
 COPY --from=build /opt/rough /opt/rough
 COPY --from=build /opt/addons /opt/addons
 COPY docker/carve-wrapper.sh /usr/local/bin/carve
-COPY docker/carve-0.1.6-wrapper.sh /usr/local/bin/carve-0.1.6
-RUN chmod +x /usr/local/bin/carve /usr/local/bin/carve-0.1.6 \
+RUN chmod +x /usr/local/bin/carve \
     && luarocks install lunajson \
     && luarocks install mimetypes \
     && luarocks install sha1 \

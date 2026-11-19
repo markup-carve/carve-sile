@@ -1,0 +1,11 @@
+return {
+  ["Composite-figures"] = {
+    link = "ref:Composite-figures",
+    marker = "Composite-figures",
+    pageno = "1",
+    section = "1",
+    title = {
+      "Composite figures"
+    }
+  }
+}
