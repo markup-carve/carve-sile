@@ -8,10 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Nothing released yet. The initial capability set:
 
+### Changed
+
+- Ported to Carve 0.2: the bridge runs `carve ast` (and `carve diagnostics`
+  for include warnings) and the renderer reads the 0.2 tree (AST contract
+  2.0). A 0.1 CLI no longer works. The image installs carve-js `next2` by
+  commit.
+- Include warnings carry the engine's codes `include-not-found`,
+  `include-outside-root` and `include-cycle`.
+
 ### Added
 
 - A SILE inputter (`inputters.carve`) that typesets `.crv` files directly:
-  `carve --json` produces the normative exchange AST and a native Lua renderer
+  `carve ast` produces the Carve tree and a native Lua renderer
   maps it to SILE and resilient.sile commands. No Pandoc conversion involved.
 - `converter=` inputter option to point at a non-default `carve` executable.
 - Carve files can be included from a Resilient master document once the

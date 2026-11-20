@@ -1,6 +1,6 @@
 # carve-sile
 
-Experimental Carve 0.1 input support for SILE and resilient.sile. It reads the Carve CLI exchange AST and typesets with a Lua renderer. See the [Carve documentation](https://markup-carve.github.io/carve/).
+Experimental Carve 0.2 input support for SILE and resilient.sile. It reads the Carve 0.2 tree from `carve ast` and typesets with a Lua renderer. See the [Carve documentation](https://markup-carve.github.io/carve/).
 
 ## Install
 
