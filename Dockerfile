@@ -1,6 +1,6 @@
 FROM node@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a AS build
 
-# The engine is the carve-js Carve 0.2 line (`next2`), pinned by commit until
+# The engine is the carve-js Carve 0.2 line (`main`), pinned by commit until
 # it is released. npm builds dist/ from the git checkout on install.
 RUN npm install --prefix /opt/carve --omit=dev --no-audit --no-fund github:markup-carve/carve-js#c25bccc979240d4300a5edbe9980d1e510c33b39 \
     && git clone https://github.com/Omikhleia/resilient.sile.git /opt/resilient.sile \
