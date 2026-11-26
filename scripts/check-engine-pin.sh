@@ -4,7 +4,7 @@
 #
 # On the Carve 0.2 line the engine is unreleased, so the image installs
 # carve-js from git by commit (`github:markup-carve/carve-js#<sha>`) and the pin
-# follows the `next2` branch rather than an npm dist-tag. The pinned value is
+# follows the `main` branch rather than an npm dist-tag. The pinned value is
 # parsed out of the Dockerfile, the branch head is read from the GitHub API.
 #
 # Usage: check-engine-pin.sh [local|drift]. `local` checks only what this repo
@@ -24,7 +24,7 @@ esac
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 dockerfile="$repo_dir/Dockerfile"
 repo="markup-carve/carve-js"
-branch="next2"
+branch="main"
 
 pinned=$(sed -n 's|.*--prefix /opt/carve .*github:'"$repo"'#\([0-9a-f]*\).*|\1|p' "$dockerfile")
 

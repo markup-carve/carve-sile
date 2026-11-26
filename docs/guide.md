@@ -19,10 +19,10 @@ No Pandoc conversion is involved.
 - `carve` on `PATH`
 
 The Carve 0.2 engine is not released yet. Install the CLI of the carve-js
-`next2` line from git; npm builds it on install:
+`main` line from git; npm builds it on install:
 
 ```sh
-npm install -g github:markup-carve/carve-js#next2
+npm install -g github:markup-carve/carve-js#main
 ```
 
 The inputter calls `carve ast` for the tree and `carve diagnostics` for include
@@ -104,7 +104,7 @@ For a reproducible end-to-end run of both using SILE's official container image:
 ### Engine pin
 
 The `Dockerfile` installs the engine from git by commit
-(`github:markup-carve/carve-js#<sha>`), following the carve-js `next2` branch.
+(`github:markup-carve/carve-js#<sha>`), following the carve-js `main` branch.
 A check watches it:
 
 ```sh
@@ -112,7 +112,7 @@ A check watches it:
 ```
 
 `local` mode checks that the pin is a full commit SHA and runs on every push and
-pull request. `drift` mode compares it with the head of `next2` from the GitHub
+pull request. `drift` mode compares it with the head of `main` from the GitHub
 API and runs daily from `.github/workflows/pin-drift.yml`; a pin behind the head
 exits 3, which files or updates one tracking issue and leaves the run green, and
 any other failure turns the run red. No argument runs both.
