@@ -4,10 +4,10 @@ Experimental [Carve](https://markup-carve.github.io/carve/) input support for
 [SILE](https://sile-typesetter.org/) and
 [resilient.sile](https://github.com/Omikhleia/resilient.sile).
 
-The inputter consumes Carve's normative exchange AST directly:
+The inputter consumes the Carve 0.2 tree (AST contract 2.0) directly:
 
 ```text
-.crv -> carve --json -> Carve AST -> native Lua renderer -> SILE -> PDF
+.crv -> carve ast -> Carve tree -> native Lua renderer -> SILE -> PDF
 ```
 
 No Pandoc conversion is involved.
@@ -18,27 +18,21 @@ No Pandoc conversion is involved.
 - resilient.sile 4.2.0 or later
 - `carve` on `PATH`
 
-Install the Carve CLI from npm:
+The Carve 0.2 engine is not released yet. Install the CLI of the carve-js
+`next2` line from git; npm builds it on install:
 
 ```sh
-npm install -g @markup-carve/carve
+npm install -g github:markup-carve/carve-js#next2
 ```
 
-Composite figures need an engine that emits the `figure_group` node, which
-means release 0.1.4 or later. On an older engine everything else still works;
-a bare `::: figure` arrives as an admonition and typesets as a plain div.
+The inputter calls `carve ast` for the tree and `carve diagnostics` for include
+warnings, so a 0.1 CLI does not work with it. A generated-content opener
+(`::: toc`, `::: footnotes` and the rest) is not built here: this target has no
+table-of-contents builder to hand it to, so it degrades to a div carrying its
+kind.
 
-Current engines preserve inline markup in both halves of editorial
-substitutions. The published 0.1.6 CLI still supplies plain strings, which the
-inputter continues to render for compatibility.
-
-Release 0.1.8 gave an escaped space and a generated-content opener
-(`::: toc`, `::: footnotes` and the rest) their own AST nodes, and moved a
-footnote reference's label onto the same field its definition uses. The inputter
-reads all three, and still reads the older spellings, so a document typesets on
-either side of that release. A generated region is not built here: this target
-has no table-of-contents builder to hand it to, so the opener degrades to a div
-carrying its kind.
+A thematic break with the class `page-break` (`{.page-break}` on the line above
+`***`) is a page break: it typesets as `\eject` and draws no rule.
 
 ## Install from this checkout
 
@@ -79,10 +73,8 @@ as an unchanged file has no directory, so its directives stay literal unless
 `include_root` is set.
 
 A directive that does not resolve stays in the output, and SILE prints a warning
-naming it with the file path relative to the root. Includes need a `carve` CLI with
-include support, available in the current published `@markup-carve/carve` release.
-With an older CLI that lacks this support, the directives stay literal and a
-warning says so; setting `include_root` is an error.
+naming it with the file path relative to the root and the engine's code
+(`include-not-found`, `include-outside-root`, `include-cycle`).
 
 When SILE runs with `--makedeps`, resolved include targets are added to its
 dependency file. Missing targets remain warnings because SILE's dependency
@@ -98,7 +90,7 @@ writer accepts only files that already exist.
 `test/renderer.sh` asserts on what the renderer puts into the SILE AST. It runs
 its assertions inside SILE, so `SU.ast` is the real one, and it parses every
 fixture with the `carve` CLI, so the AST under assertion is the engine's own
-output. `test/smoke.sh` checks the exchange AST whenever `carve` is installed -
+output. `test/smoke.sh` checks the tree whenever `carve` is installed -
 including that the installed engine emits `figure_group` at all - and
 additionally typesets `examples/smoke.crv` and `examples/composite-figure.crv`
 when SILE is available.
@@ -111,30 +103,19 @@ For a reproducible end-to-end run of both using SILE's official container image:
 
 ### Engine pin
 
-The `Dockerfile` installs two engines: the current lane, which the tests
-measure against, and a `0.1.6` fixture lane the include probes need because
-that release refuses `--include-root`. Both are hand-edited version literals,
-so a check watches them:
+The `Dockerfile` installs the engine from git by commit
+(`github:markup-carve/carve-js#<sha>`), following the carve-js `next2` branch.
+A check watches it:
 
 ```sh
 ./scripts/check-engine-pin.sh
 ```
 
-It reads the current-lane version out of the `Dockerfile` and the newest
-release from the npm registry, and fails when they differ. The two values come
-from different places on purpose: a check that derived both from the
-`Dockerfile` could never fail. It also fails when the fixture lane drifts out
-of agreement with itself - the version it installs, the prefix it installs
-into, its wrapper script and the name the tests invoke all have to name the
-same release.
-
-The fixture-lane agreement is what this repository controls, so `local` mode
-runs it on every push and pull request. The comparison with the npm registry
-is upstream moving, not a fault in a pull request, so `drift` mode runs it daily
-from `.github/workflows/pin-drift.yml`. In `drift` mode a stale pin exits 3,
-which files or updates one tracking issue and leaves the run green; a clean run
-closes the issue, and any other failure, such as an unreachable registry, turns
-the run red. No argument runs both.
+`local` mode checks that the pin is a full commit SHA and runs on every push and
+pull request. `drift` mode compares it with the head of `next2` from the GitHub
+API and runs daily from `.github/workflows/pin-drift.yml`; a pin behind the head
+exits 3, which files or updates one tracking issue and leaves the run green, and
+any other failure turns the run red. No argument runs both.
 
 ### Upstream source pins
 
@@ -168,7 +149,7 @@ revision actually cloned.
 
 ## Current scope
 
-The renderer maps the stable Carve exchange format directly to Resilient's SILE
+The renderer maps the Carve 0.2 tree directly to Resilient's SILE
 commands. Unknown node types are errors rather than silently discarded content;
 documented fallbacks warn when no first-class Resilient command exists.
 
@@ -179,22 +160,21 @@ does not produce as its own node cannot be recovered here.
 ### Composite figures render as one numbered unit
 
 A bare `::: figure` container is one figure of ordered panels under a single
-caption (Carve PART 9 section 4c). The engine hands it over as a
-`figure_group` node: the panels are the `figure` and `table` children in
-source order, any other child is stray group content kept in place, and the
-caption after the closing fence belongs to the whole group.
+caption. The engine hands it over as a `figure_group` node: the panels are the
+captioned children (an image paragraph, a table, a code block) in source
+order, any other child is stray group content kept in place, and the caption
+after the closing fence belongs to the whole group.
 
 Input, `examples/composite-figure.crv` in short:
 
 ````
 {#fig-mixed .columns-2}
 ::: figure
-| Kind | N |
-|------|---|
-| a    | 1 |
+|= Kind |= N |
+| a | 1 |
 ^ (a) A table panel
 
-``` js
+```js
 const x = 1
 ```
 ^ (b) A listing panel

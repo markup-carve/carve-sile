@@ -1,4 +1,4 @@
---- Convert the normative Carve exchange AST directly to SILE commands.
+--- Convert the Carve 0.2 tree (AST contract 2.0) directly to SILE commands.
 
 local createCommand, createStructuredCommand = SU.ast.createCommand, SU.ast.createStructuredCommand
 
@@ -23,13 +23,16 @@ local function attrs (node, extraClass)
   if extraClass then
     out.class = out.class and (out.class .. " " .. extraClass) or extraClass
   end
-  for key, value in pairs(source.keyValues or {}) do out[key] = value end
+  -- C2-A-032: the pairs in written order; the first of a repeated key wins.
+  for _, pair in ipairs(source.keyValues or {}) do
+    if out[pair[1]] == nil then out[pair[1]] = pair[2] end
+  end
   return out
 end
 
 local function asList (value)
   if value == nil then return {} end
-  if type(value) == "table" and value.command then return { value } end
+  if type(value) ~= "table" or value.command then return { value } end
   return value
 end
 
@@ -67,10 +70,10 @@ end
 
 function Renderer:render (document)
   if type(document) ~= "table" or document.type ~= "document" then
-    SU.error("Carve parser output is not a document exchange AST")
+    SU.error("Carve parser output is not a Carve document tree")
   end
   for _, node in ipairs(document.children or {}) do
-    if node.type == "footnote" then self.footnotes[node.label] = node end
+    if node.type == "footnote" and self.footnotes[node.key] == nil then self.footnotes[node.key] = node end
   end
   return self:children(document)
 end
@@ -95,8 +98,8 @@ end
 -- the document: a newer engine or an extension can add types at any time.
 function Renderer:unsupported (node)
   SU.warn("Carve AST node type '" .. tostring(node.type) .. "' is not supported; rendering its content as plain text")
-  if type(node.fallback) == "table" then return self:node(node.fallback) end
-  for _, field in ipairs({ "children", "inline", "content" }) do
+  if type(node.fallback) == "table" and #node.fallback > 0 then return self:children(node, "fallback") end
+  for _, field in ipairs({ "children" }) do
     if type(node[field]) == "table" then return self:children(node, field) end
   end
   if type(node.pairs) == "table" then
@@ -104,13 +107,13 @@ function Renderer:unsupported (node)
     for _, pair in ipairs(node.pairs) do output[#output + 1] = self:children(pair, "base") end
     return output
   end
-  for _, field in ipairs({ "value", "content", "text" }) do
-    if type(node[field]) == "string" then return resolveNbsp(node[field]) end
-  end
+  if type(node.value) == "string" then return resolveNbsp(node.value) end
   return nil
 end
 
 function Renderer:node (node)
+  -- 0.2 has no figure node: a caption belongs to the block it describes.
+  if node.caption and node.type ~= "table" and node.type ~= "figure_group" then return self:captioned(node) end
   local handler = self[node.type]
   if not handler then return self:unsupported(node) end
   return handler(self, node)
@@ -118,10 +121,7 @@ end
 
 function Renderer:document (node) return self:children(node) end
 function Renderer:text (node) return resolveNbsp(node.value) end
-function Renderer:escaped_text (node) return node.value end
 function Renderer:soft_break (_) return " " end
--- A `+` continuation row join inside a table cell (AST contract 1.1).
-function Renderer:cell_wrap (_) return " " end
 function Renderer:hard_break (_) return createCommand("markdown:internal:hardbreak") end
 
 -- Its own node since carve 0.1.8; before that an escaped space arrived as the
@@ -147,11 +147,16 @@ end
 
 function Renderer:heading (node)
   local options = attrs(node)
+  if not options.id and node.generatedId then options.id = node.generatedId end
   options.level = node.level + self.shiftHeadings
   return createCommand("markdown:internal:header", options, self:children(node), pos(node))
 end
 
+-- `{.page-break}` on `***` is the page-break convention (carve#6793).
 function Renderer:thematic_break (node)
+  for _, class in ipairs((node.attrs or {}).classes or {}) do
+    if class == "page-break" then return createCommand("eject", {}, nil, pos(node)) end
+  end
   return createCommand("markdown:internal:thematicbreak", attrs(node), nil, pos(node))
 end
 
@@ -188,28 +193,55 @@ function Renderer:directive (node)
 end
 
 function Renderer:code_block (node)
-  local options = attrs(node, node.lang)
-  return createCommand("markdown:internal:codeblock", options, resolveNbsp(node.content), pos(node))
+  local options = attrs(node, node.syntax)
+  return createCommand("markdown:internal:codeblock", options, resolveNbsp(node.value), pos(node))
 end
 
 function Renderer:raw_block (node)
-  return createCommand("markdown:internal:rawblock", { format = node.format }, node.content, pos(node))
+  return createCommand("markdown:internal:rawblock", { format = node.format }, node.value, pos(node))
 end
 
 function Renderer:list (node)
-  local content = asList(self:children(node, "items"))
-  if not node.ordered then return createStructuredCommand("itemize", {}, content, pos(node)) end
-  return createStructuredCommand("enumerate", { start = node.start or 1 }, content, pos(node))
+  local content = asList(self:children(node))
+  local marker = node.marker or {}
+  if marker.kind ~= "ordered" then return createStructuredCommand("itemize", {}, content, pos(node)) end
+  return createStructuredCommand("enumerate", { start = marker.start or 1 }, content, pos(node))
 end
 
 function Renderer:list_item (node)
-  local bullet = node.checked == true and "☑" or node.checked == false and "☐" or nil
+  local bullet
+  if node.task then bullet = node.task.mark:match("%S") and "☑" or "☐" end
   return createCommand("item", { bullet = bullet }, self:children(node), pos(node))
 end
 
+--- The rows of a table, in order: the head, body and foot groups hold them.
+local function tableRows (node)
+  local rows, headRows = {}, 0
+  for _, group in ipairs(node.children or {}) do
+    for _, row in ipairs(group.children or {}) do
+      if row.type == "table_row" then
+        rows[#rows + 1] = row
+        if group.type == "table_head" then headRows = headRows + 1 end
+      end
+    end
+  end
+  return rows, headRows
+end
+
+--- A caption node holds blocks; SILE's caption takes the inline content.
+function Renderer:captionContent (caption)
+  local content = {}
+  for index, block in ipairs(caption.children or {}) do
+    if index > 1 then content[#content + 1] = " " end
+    local rendered = (block.type == "paragraph") and self:children(block) or self:node(block)
+    for _, item in ipairs(asList(rendered)) do content[#content + 1] = item end
+  end
+  return content
+end
+
 function Renderer:table (node, extraClass)
-  local rows = node.rows or {}
-  local columns = rows[1] and #(rows[1].cells or {}) or 1
+  local rows, headRows = tableRows(node)
+  local columns = rows[1] and #(rows[1].children or {}) or 1
   local widths = {}
   for i = 1, columns do widths[i] = string.format("%.5f%%lw", 99.9 / columns) end
   -- The engine publishes each origin's resolved colspan/rowspan; a marker no
@@ -217,7 +249,7 @@ function Renderer:table (node, extraClass)
   -- only, so a position covered from above keeps an empty cell per strip.
   local covered = {}
   for r, row in ipairs(rows) do
-    for c, cell in ipairs(row.cells or {}) do
+    for c, cell in ipairs(row.children or {}) do
       if cell.span == nil then
         local cols, rowsDown = cell.colspan or 1, cell.rowspan or 1
         for dr = 0, rowsDown - 1 do
@@ -233,7 +265,7 @@ function Renderer:table (node, extraClass)
   local content = {}
   for r, row in ipairs(rows) do
     local cells = {}
-    for c, cell in ipairs(row.cells or {}) do
+    for c, cell in ipairs(row.children or {}) do
       local cover = cell.span ~= nil and covered[r .. ":" .. c] or nil
       if not cover then
         cells[#cells + 1] = self:node(cell)
@@ -245,20 +277,22 @@ function Renderer:table (node, extraClass)
   end
   local tableNode = createStructuredCommand("ptable", {
     cols = table.concat(widths, " "),
-    header = rows[1] and rows[1].cells and rows[1].cells[1] and rows[1].cells[1].header or false,
+    header = headRows > 0,
   }, content, pos(node))
   local wrapped = { tableNode }
-  if node.caption and #node.caption > 0 then
-    wrapped[#wrapped + 1] = createCommand("caption", {}, self:children(node, "caption"), pos(node))
+  if node.caption then
+    wrapped[#wrapped + 1] = createCommand("caption", {}, self:captionContent(node.caption), pos(node))
   end
   return createStructuredCommand("markdown:internal:captioned-table", attrs(node, extraClass), wrapped, pos(node))
 end
 
 function Renderer:table_row (node)
   local content = {}
-  for _, cell in ipairs(node.cells or {}) do content[#content + 1] = self:node(cell) end
+  for _, cell in ipairs(node.children or {}) do content[#content + 1] = self:node(cell) end
   return createStructuredCommand("row", {}, content, pos(node))
 end
+
+function Renderer:cell_paragraph (node) return self:children(node) end
 
 function Renderer:table_cell (node)
   local options = { halign = node.align }
@@ -291,12 +325,12 @@ end
 function Renderer:subscript (node) return createCommand("textsubscript", {}, self:children(node), pos(node)) end
 function Renderer:superscript (node) return createCommand("textsuperscript", {}, self:children(node), pos(node)) end
 function Renderer:code (node) return createCommand("code", attrs(node), resolveNbsp(node.value), pos(node)) end
-function Renderer:literal_inline (node) return createCommand("code", attrs(node), resolveNbsp(node.content), pos(node)) end
+function Renderer:literal_inline (node) return createCommand("code", attrs(node), resolveNbsp(node.value), pos(node)) end
 
 function Renderer:link (node)
   local options = attrs(node)
   options.src = node.href
-  if node.title then options.title = node.title end
+  if node.tooltip then options.title = node.tooltip end
   return createCommand("markdown:internal:link", options, self:children(node), pos(node))
 end
 
@@ -304,56 +338,75 @@ function Renderer:autolink (node)
   return createCommand("markdown:internal:link", { src = node.href }, { node.text or node.href }, pos(node))
 end
 
-function Renderer:heading_ref (node)
-  return createCommand("markdown:internal:link", { src = node.href or ("#" .. node.target) }, { node.target }, pos(node))
+-- A cross-reference (`</#id>`); without `href` the name resolved to nothing,
+-- and it is written as its source text, as the HTML writer does.
+function Renderer:xref (node)
+  if node.namespace == "footnote" then return self:footnote_ref(node) end
+  if not node.href then return "</#" .. node.key .. ">" end
+  return createCommand("markdown:internal:link", { src = node.href }, { node.key }, pos(node))
 end
 
 function Renderer:image (node)
   local options = attrs(node)
   options.src = node.src
-  if node.title then options.title = node.title end
+  if node.tooltip then options.title = node.tooltip end
   return createCommand("markdown:internal:image", options, { node.alt }, pos(node))
 end
 
 function Renderer:raw_inline (node)
-  return createCommand("markdown:internal:rawinline", { format = node.format }, node.content, pos(node))
+  return createCommand("markdown:internal:rawinline", { format = node.format }, node.value, pos(node))
 end
 
 function Renderer:math (node)
-  return createCommand("markdown:internal:math", { mode = node.display and "display" or "text" }, { node.content }, pos(node))
+  return createCommand("markdown:internal:math", { mode = node.display and "display" or "text" }, { node.value }, pos(node))
 end
 
--- The reference names its definition in `label`, which is the field the
--- definition has always used. Engines up to 0.1.7 spelled the reference's copy
--- `id`, so both are read: the rockspec pins no CLI, and one of those is what a
--- reader may still have installed.
 function Renderer:footnote_ref (node)
-  local label = node.label or node.id
+  local label = node.key
   local note = label and self.footnotes[label] or nil
   if not note then SU.error("Failure to find Carve footnote '" .. tostring(label) .. "'") end
   return createCommand("markdown:internal:footnote", { id = label }, self:children(note), pos(node))
 end
 
 function Renderer:inline_footnote (node)
-  return createCommand("markdown:internal:footnote", {}, self:children(node, "inline"), pos(node))
+  return createCommand("markdown:internal:footnote", {}, self:children(node), pos(node))
 end
 
 function Renderer:footnote (_) return nil end
 function Renderer:line_block (node) return createStructuredCommand("markdown:internal:lineblock", attrs(node), asList(self:children(node)), pos(node)) end
-function Renderer:definition_list (node) return createCommand("markdown:internal:paragraph", attrs(node), self:children(node, "items"), pos(node)) end
+function Renderer:line (node) return createCommand("markdown:internal:paragraph", {}, self:children(node), pos(node)) end
+function Renderer:definition_list (node) return createCommand("markdown:internal:paragraph", attrs(node), self:children(node), pos(node)) end
+function Renderer:section (node) return self:children(node) end
+-- An expanded include stands for its blocks; an unexpanded one is the
+-- directive as text, as the HTML writer renders it (C2-N-070).
+function Renderer:include (node)
+  if node.children then return self:children(node) end
+  return createCommand("markdown:internal:paragraph", {}, "{{ " .. node.path .. " }}", pos(node))
+end
 function Renderer:definition_term (node) return createCommand("term", attrs(node), self:children(node), pos(node)) end
 function Renderer:definition_description (node) return createCommand("definition", attrs(node), self:children(node), pos(node)) end
 
-function Renderer:figure (node, extraClass)
-  local target = self:node(node.target)
-  local content = { target, createCommand("caption", {}, self:children(node, "caption"), pos(node)) }
+--- A captioned block (0.2 has no figure node): an image paragraph is the
+-- figure's image, any other block is rendered and captioned as it stands.
+function Renderer:captioned (node, extraClass)
+  local target
+  if node.type == "paragraph" and node.role == "image" then
+    target = self:children(node)
+  else
+    local copy = {}
+    for key, value in pairs(node) do copy[key] = value end
+    copy.caption = nil
+    target = self:node(copy)
+  end
+  local content = asList(target)
+  content[#content + 1] = createCommand("caption", {}, self:captionContent(node.caption), pos(node))
   return createStructuredCommand("markdown:internal:captioned-figure", attrs(node, extraClass), content, pos(node))
 end
 
 -- A composite figure (PART 9 section 4c): one figure of ordered panels under
--- a single caption. The panels are the `figure` and `table` children, derived
--- by type exactly as the exchange schema defines them; every other child is
--- stray group content preserved in place between the panels.
+-- a single caption. The panels are the captioned children (an image
+-- paragraph or a table with a caption); every other child is stray group
+-- content preserved in place between the panels.
 --
 -- The group is ONE numbering unit. Resilient numbers every captioned figure
 -- and table it typesets and files each into the list of figures or tables, so
@@ -377,10 +430,10 @@ function Renderer:figure_group (node)
   local content = {}
   for _, child in ipairs(node.children or {}) do
     local rendered
-    if child.type == "figure" then
-      rendered = self:figure(child, PANEL_CLASS)
-    elseif child.type == "table" then
+    if child.type == "table" then
       rendered = self:table(child, PANEL_CLASS)
+    elseif child.caption then
+      rendered = self:captioned(child, PANEL_CLASS)
     else
       rendered = self:node(child)
     end
@@ -390,7 +443,7 @@ function Renderer:figure_group (node)
   -- captioned-figure numbers nothing and files nothing, which matches the
   -- engine - a group with no caption draws no number for itself or its panels.
   if node.caption then
-    content[#content + 1] = createCommand("caption", {}, self:children(node, "caption"), pos(node))
+    content[#content + 1] = createCommand("caption", {}, self:captionContent(node.caption), pos(node))
   end
   return createStructuredCommand("markdown:internal:captioned-figure", attrs(node), content, pos(node))
 end
@@ -401,24 +454,18 @@ function Renderer:citation_group (node)
 end
 function Renderer:smart_punctuation (node) return node.glyph or node.value end
 function Renderer:caption_number (node) return tostring(node.n or "#") end
-function Renderer:critic_comment (node) return createCommand("markdown:internal:span", { class = "critic-comment" }, node.text, pos(node)) end
-function Renderer:substitution (node)
-  local old = node.old and self:children(node, "old") or node.oldText
-  local new = node.new and self:children(node, "new") or node.newText
-  local content = {
-    createCommand("markdown:internal:span", { class = "deleted" }, old, pos(node)),
-    createCommand("markdown:internal:span", { class = "inserted" }, new, pos(node)),
-  }
-  return createCommand("markdown:internal:span", attrs(node, "substitution"), content, pos(node))
-end
-function Renderer:mention (node) return createCommand("markdown:internal:span", attrs(node, "mention"), "@" .. node.user, pos(node)) end
+function Renderer:critic_comment (node) return createCommand("markdown:internal:span", { class = "critic-comment" }, node.value, pos(node)) end
+function Renderer:mention (node) return createCommand("markdown:internal:span", attrs(node, "mention"), "@" .. node.target, pos(node)) end
 function Renderer:tag (node) return createCommand("markdown:internal:span", attrs(node, "tag"), "#" .. node.name, pos(node)) end
 function Renderer:symbol (node) return createCommand("markdown:internal:symbol", { _symbol_ = node.name }, nil, pos(node)) end
-function Renderer:abbreviation (node) return createCommand("markdown:internal:span", { title = node.expansion }, node.abbr, pos(node)) end
--- An inline extension carries its content as an array of nodes under
--- `content`, not as a string, so it needs converting like any other children
--- list. Handed to createCommand as-is, the records reach SILE.process, which
--- has nothing to do with them and drops the content on the floor.
-function Renderer:inline_extension (node) return createCommand("markdown:internal:span", attrs(node, "extension " .. node.name), self:children(node, "content"), pos(node)) end
+function Renderer:abbreviation (node) return createCommand("markdown:internal:span", { title = node.expansion }, node.key, pos(node)) end
+-- An inline extension carries its content as an array of nodes, so it needs
+-- converting like any other children list. Handed to createCommand as-is, the
+-- records reach SILE.process, which drops the content on the floor. One with
+-- no children prints the fallback it promised (C2-X-023).
+function Renderer:inline_extension (node)
+  local field = (node.children and #node.children > 0 or not node.fallback) and "children" or "fallback"
+  return createCommand("markdown:internal:span", attrs(node, "extension " .. node.name), self:children(node, field), pos(node))
+end
 
 return Renderer

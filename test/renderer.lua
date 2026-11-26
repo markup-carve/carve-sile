@@ -4,8 +4,8 @@
 -- SU.ast and pl.class are the real ones rather than a stand-in that could
 -- agree with a broken renderer.
 --
--- Every fixture is parsed by the carve CLI, so the AST under assertion is the
--- engine's own output rather than a hand-written record that could drift from
+-- Every fixture is parsed by the carve CLI (`carve ast`, Carve 0.2), so the
+-- tree under assertion is the engine's own output rather than a hand-written record that could drift from
 -- it.
 
 local repo = os.getenv("CARVE_SILE_REPO") or "."
@@ -135,25 +135,19 @@ do
   end
 end
 
--- 2. Substitution halves are inline arrays, not strings. Both sides must pass
--- through the renderer so nested markup survives in the SILE tree.
+-- 2. A substitution is a deletion followed by an insertion in 0.2 (T-043, and
+-- U-069 respells the 0.1 arrow form). Both halves pass through the renderer so
+-- nested markup survives in the SILE tree.
 do
-  local tree = render("{~/old/~>/new/~}\n")
-  local substitution
-  for _, node in ipairs(tables(tree)) do
-    if node.command == "markdown:internal:span"
-      and node.options and node.options.class == "substitution" then
-      substitution = node
-    end
-  end
-  check("a substitution renders its old and new text", substitution and flatten(substitution) == "oldnew")
+  local tree = render("{-/old/-}{+/new/+}\n")
   local deleted, inserted
-  for _, node in ipairs(tables(substitution or {})) do
+  for _, node in ipairs(tables(tree)) do
     if node.command == "markdown:internal:span" and node.options then
       if node.options.class == "deleted" then deleted = node end
       if node.options.class == "inserted" then inserted = node end
     end
   end
+  check("a substitution renders its old and new text", flatten(tree) == "oldnew", flatten(tree))
   check(
     "a substitution keeps the old half first and marked deleted",
     deleted and flatten(deleted) == "old"
@@ -163,16 +157,10 @@ do
     inserted and flatten(inserted) == "new"
   )
   local emphasized = 0
-  for _, node in ipairs(tables(substitution or {})) do
+  for _, node in ipairs(tables(tree)) do
     if node.command == "em" then emphasized = emphasized + 1 end
   end
   check("both substitution halves retain inline markup", emphasized == 2, "got " .. emphasized .. " emphasized halves")
-
-  if pl.utils.executeex("command -v carve-0.1.6") then
-    local json, err = bridge.convert("{~old~>new~}\n", { converter = "carve-0.1.6" })
-    local legacy = json and Renderer({}):render(decoder.decode(json)) or {}
-    check("the published engine's string-shaped substitution still renders", flatten(legacy) == "oldnew", err)
-  end
 end
 
 -- 3. The same defect, stated as an invariant: nothing in a rendered tree may
@@ -286,9 +274,9 @@ local GROUP = table.concat({
   "![one](a.png)",
   "^ (a) One",
   "",
-  "| Kind | N |",
-  "|------|---|",
-  "| a    | 1 |",
+  -- C2-B-166: a Markdown separator row is a body row in 0.2; the head is `|=`.
+  "|= Kind |= N |",
+  "| a | 1 |",
   "^ (b) A table panel",
   "",
   "Stray text between the panels.",
@@ -416,9 +404,8 @@ do
   )
 end
 
--- 12. CARVE-P12-064 makes `code_block.content` the payload's literal text, the
--- final line break included, and says it does not change `raw_block.content`,
--- whose last break stays implied. Either way the renderer hands the value over
+-- 12. A code block's `value` is the payload's literal text, the final line
+-- break included, and a raw block's `value` keeps its last break implied. Either way the renderer hands the value over
 -- byte for byte. A strip here costs the payload's last blank line: the host
 -- renders one line per payload line, so "a\n\n" is a line and a blank one while
 -- "a\n" is the line alone, and the four payloads below are four documents.
@@ -436,8 +423,8 @@ do
   for _, payload in ipairs({ "", "\n", "a", "a\n", "a\n\n" }) do
     local shown = "\"" .. visible(payload) .. "\""
     for _, node in ipairs({
-      { type = "code_block", content = payload },
-      { type = "raw_block", format = "html", content = payload },
+      { type = "code_block", value = payload },
+      { type = "raw_block", format = "html", value = payload },
     }) do
       local got = payloadOf(node)
       check(
@@ -464,10 +451,10 @@ do
     local rendered = firstCommand(render(fence), "markdown:internal:codeblock")
     check(
       "the parsed payload reaches SILE unchanged",
-      rendered ~= nil and rendered[1] == parsed.content,
+      rendered ~= nil and rendered[1] == parsed.value,
       string.format(
         "AST %q, rendered %q",
-        visible(tostring(parsed.content)),
+        visible(tostring(parsed.value)),
         visible(tostring(rendered and rendered[1]))
       )
     )
@@ -518,27 +505,23 @@ do
     )
   end
 
-  -- A footnote reference names its definition in `label`. Up to 0.1.7 the
-  -- reference spelled its copy `id`, and reading only `id` looked up nil.
-  for _, field in ipairs({ "label", "id" }) do
-    local ref = { type = "footnote_ref" }
-    ref[field] = "n"
-    local rendered
-    ok, rendered = pcall(renderTree, {
-      { type = "footnote", label = "n", children = {
-        { type = "paragraph", children = { { type = "text", value = "body" } } },
-      } },
-      { type = "paragraph", children = { { type = "text", value = "see" }, ref } },
-    })
-    check("a footnote reference resolves through its " .. field, ok, tostring(rendered))
-    if ok then
-      local note = firstCommand(rendered, "markdown:internal:footnote")
-      check(
-        "the footnote reached by " .. field .. " carries its body",
-        note ~= nil and flatten(note) == "body",
-        "got \"" .. visible(flatten(note or {})) .. "\""
-      )
-    end
+  -- A footnote reference names its definition by `key` (C2-A footnote_ref).
+  local ref = { type = "footnote_ref", key = "n", namespace = "footnote" }
+  local rendered
+  ok, rendered = pcall(renderTree, {
+    { type = "footnote", key = "n", namespace = "footnote", children = {
+      { type = "paragraph", children = { { type = "text", value = "body" } } },
+    } },
+    { type = "paragraph", children = { { type = "text", value = "see" }, ref } },
+  })
+  check("a footnote reference resolves through its key", ok, tostring(rendered))
+  if ok then
+    local note = firstCommand(rendered, "markdown:internal:footnote")
+    check(
+      "the footnote reached by its key carries its body",
+      note ~= nil and flatten(note) == "body",
+      "got \"" .. visible(flatten(note or {})) .. "\""
+    )
   end
 end
 
@@ -572,7 +555,8 @@ do
 
   local text, err, warnings, dependencies = convert(mainSource, { source_path = book .. "/main.crv" })
   check("a named file expands nested includes against their parent", has(text, "Two."), err)
-  check("an include that does not resolve reports itself", has(warnings, "include-unresolved"), warnings)
+  -- C2-N-013: 0.2 names the cause, so a missing target is include-not-found.
+  check("an include that does not resolve reports itself", has(warnings, "include-not-found"), warnings)
   check("include warnings name no host path", not has(warnings, base), warnings)
   check("include warnings name the file below the root", has("\n" .. warnings, "\nparts/one.crv:"), warnings)
   local dependencyById = {}
@@ -614,26 +598,6 @@ do
   text, err = convert(mainSource, { source_path = book .. "/main.crv", includes = false })
   check("includes = false leaves a named file's directives literal", not has(text, "One."), err)
 
-  local old = "carve-0.1.6"
-  if pl.utils.executeex("command -v " .. old) then
-    check("the probe finds include support in the current CLI", bridge.supportsIncludes("carve"))
-    check("the probe finds include reports in the current CLI", bridge.supportsIncludeReport("carve"))
-    check("the probe finds none in " .. old, not bridge.supportsIncludes(old))
-    check("the probe finds no include reports in " .. old, not bridge.supportsIncludeReport(old))
-
-    text, err, warnings = convert(mainSource, { converter = old, source_path = book .. "/main.crv" })
-    check("an older CLI still renders a named file with directives", has(text, "{{ parts/one.crv }}"), err)
-    check("an older CLI reports that directives stayed literal", has(warnings, "include directives left literal"), warnings)
-
-    text, err = convert(mainSource, { converter = old, source_path = book .. "/main.crv", include_root = book })
-    check("include_root with an older CLI is an error", has(err, "has no include support"), err)
-
-    text, err = convert(mainSource, { converter = old, source_path = book .. "/main.crv", includes = false })
-    check("an older CLI accepts includes = false", has(text, "Before."), err)
-  else
-    print("skip - " .. old .. " is not installed; older-CLI include checks not run")
-  end
-
   local Inputter = require("inputters.carve")
   local function parseAs (file, doc, options)
     local saved = SILE.currentlyProcessingFile
@@ -668,11 +632,9 @@ do
   pl.dir.rmtree(base)
 end
 
--- 15. A `+` continuation row joins onto the cell above. From carve 0.1.11 the
--- join is a `cell_wrap` node, which has no handler unless one is defined, and
--- an unknown type aborts the whole render.
+-- 15. A `+` continuation row joins onto the cell above with one space.
 do
-  local text = flatten(render("| a | b |\n|---|---|\n| 1 | 2 |\n+ x | y |\n"))
+  local text = flatten(render("|= a |= b |\n| 1 | 2 |\n+ x | y |\n"))
   check("a continuation row joins its cell with one space", text:find("1 x", 1, true) ~= nil, text)
 end
 
@@ -696,8 +658,10 @@ do
   end
   local got = rowsOf("| a | < | c |\n| x | y | z |\n")
   check("a resolved colspan widens its origin", got == "span2:a|c/x|y|z", got)
+  -- U-147 (C2-B-175, C2-B-184): the continuation fragment joins the blocked
+  -- marker's text, so the `<` stays in front of `d`.
   got = rowsOf("| a | b |\n| < | c |\n+ d | e |\n")
-  check("a blocked marker stays a cell with its text", got == "a|b/d|c e", got)
+  check("a blocked marker stays a cell with its text", got == "a|b/< d|c e", got)
   got = rowsOf("| a | b |\n| ^ | c |\n")
   check("a rowspan keeps an empty cell below its origin", got == "a|b/|c", got)
 end
@@ -709,15 +673,47 @@ do
       { type = "text", value = "a " },
       { type = "small_caps", children = { { type = "text", value = "Caps" } } },
       { type = "text", value = " b " },
-      { type = "ruby", pairs = { { base = { { type = "text", value = "Base" } }, annotation = { { type = "text", value = "x" } } } } },
+      { type = "ruby", pairs = { { type = "ruby_pair", base = { { type = "text", value = "Base" } }, annotation = { { type = "text", value = "x" } } } } },
     } },
-    { type = "block_extension", name = "org.example", fallback = { type = "paragraph", children = { { type = "text", value = "Fallback" } } } },
+    { type = "block_extension", name = "org.example", version = "1", children = {}, fallback = { { type = "paragraph", children = { { type = "text", value = "Fallback" } } } } },
     { type = "future_node" },
   } }
   local ok, tree = pcall(function () return Renderer({}):render(doc) end)
   local text = ok and flatten(tree) or tostring(tree)
   check("an unknown inline renders its children", ok and text:find("a Caps b Base", 1, true) ~= nil, text)
   check("an unknown block renders its fallback", ok and text:find("Fallback", 1, true) ~= nil, text)
+end
+
+-- 18. The 0.2 fields the renderer maps: the list marker and task, the
+-- cross-reference, attribute pairs, and an include left unexpanded.
+do
+  local list = firstCommand(render("3. three\n4. four\n"), "enumerate")
+  check("an ordered list starts at its marker's number", list ~= nil and list.options.start == 3,
+    "got " .. tostring(list and list.options.start))
+  local item = firstCommand(render("- [x] done\n- [ ] open\n"), "item")
+  check("a checked task item gets the checked bullet", item ~= nil and item.options.bullet == "☑",
+    "got " .. tostring(item and item.options.bullet))
+  local resolved = render("{#plan}\n# Plan\n\nSee </#plan>.\n")
+  local link = firstCommand(resolved, "markdown:internal:link")
+  check("a resolved cross-reference is a link to its target", link ~= nil and link.options.src == "#plan",
+    "got " .. tostring(link and link.options.src))
+  local unresolved = flatten(render("See </#nowhere>.\n"))
+  check("an unresolved cross-reference keeps its source text", unresolved:find("</#nowhere>", 1, true) ~= nil, unresolved)
+  local span = firstCommand(render("[word]{lang=de}\n"), "markdown:internal:span")
+  check("an attribute pair reaches the command options", span ~= nil and span.options.lang == "de",
+    "got " .. tostring(span and span.options.lang))
+  local literal = flatten(render("{{ chapter.crv }}\n"))
+  check("an include left unexpanded is its directive as text", literal == "{{ chapter.crv }}", literal)
+end
+
+-- 19. A thematic break with the class page-break is a page break (carve#6793).
+do
+  local broken = render("One\n\n{.page-break}\n***\n\nTwo\n")
+  check("a page-break thematic break is a page break", firstCommand(broken, "eject") ~= nil)
+  check("a page-break thematic break draws no rule", firstCommand(broken, "markdown:internal:thematicbreak") == nil)
+  local plain = render("One\n\n***\n\nTwo\n")
+  check("a plain thematic break stays a rule", firstCommand(plain, "markdown:internal:thematicbreak") ~= nil
+    and firstCommand(plain, "eject") == nil)
 end
 
 print(string.format("\n%d checks, %d failed", run, #failed))

@@ -3,9 +3,9 @@ title: Carve meets SILE
 author: Carve contributors
 ---
 
-# Carve meets SILE
+= Carve meets SILE
 
-This paragraph has /emphasis/, *strong text*, _underlining_, and =highlighting=.
+This paragraph has /emphasis/, *strong text*, {_underlining_}, and {=highlighting=}.
 
 ::: note
 This admonition travelled through Carve's Pandoc bridge into Resilient.
