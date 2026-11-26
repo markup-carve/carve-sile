@@ -152,7 +152,11 @@ function Renderer:heading (node)
   return createCommand("markdown:internal:header", options, self:children(node), pos(node))
 end
 
+-- `{.page-break}` on `***` is the page-break convention (carve#6793).
 function Renderer:thematic_break (node)
+  for _, class in ipairs((node.attrs or {}).classes or {}) do
+    if class == "page-break" then return createCommand("eject", {}, nil, pos(node)) end
+  end
   return createCommand("markdown:internal:thematicbreak", attrs(node), nil, pos(node))
 end
 
