@@ -31,6 +31,9 @@ warnings, so a 0.1 CLI does not work with it. A generated-content opener
 table-of-contents builder to hand it to, so it degrades to a div carrying its
 kind.
 
+A thematic break with the class `page-break` (`{.page-break}` on the line above
+`***`) is a page break: it typesets as `\eject` and draws no rule.
+
 ## Install from this checkout
 
 ```sh

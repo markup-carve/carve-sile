@@ -706,5 +706,15 @@ do
   check("an include left unexpanded is its directive as text", literal == "{{ chapter.crv }}", literal)
 end
 
+-- 19. A thematic break with the class page-break is a page break (carve#6793).
+do
+  local broken = render("One\n\n{.page-break}\n***\n\nTwo\n")
+  check("a page-break thematic break is a page break", firstCommand(broken, "eject") ~= nil)
+  check("a page-break thematic break draws no rule", firstCommand(broken, "markdown:internal:thematicbreak") == nil)
+  local plain = render("One\n\n***\n\nTwo\n")
+  check("a plain thematic break stays a rule", firstCommand(plain, "markdown:internal:thematicbreak") ~= nil
+    and firstCommand(plain, "eject") == nil)
+end
+
 print(string.format("\n%d checks, %d failed", run, #failed))
 os.exit(#failed == 0 and 0 or 1)
