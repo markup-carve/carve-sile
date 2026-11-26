@@ -32,6 +32,9 @@ sile -o "$work_dir/composite-figure.pdf" -u inputters.carve "$repo_dir/examples/
 test -s composite-figure.pdf
 echo "PASS: examples/composite-figure.crv -> composite-figure.pdf"
 # SILE prints one [n] per shipped page.
-pages=$(sile -o "$work_dir/page-break.pdf" -u inputters.carve "$repo_dir/examples/page-break.crv" 2>&1 | grep -o '\[[0-9]*\]' | wc -l)
+sile -o "$work_dir/page-break.pdf" -u inputters.carve "$repo_dir/examples/page-break.crv" > page-break.log 2>&1 \
+  || { cat page-break.log; exit 1; }
+test -s page-break.pdf
+pages=$(grep -o '\[[0-9]*\]' page-break.log | wc -l)
 test "$pages" -eq 2 || { echo "FAIL: examples/page-break.crv gave $pages pages, expected 2"; exit 1; }
 echo "PASS: examples/page-break.crv -> 2 pages"
